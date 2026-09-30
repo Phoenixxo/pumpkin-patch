@@ -1,0 +1,16 @@
+manifest-version = 1
+
+[mod]
+id = "bench:hud-@N@"
+name = "HUD bench @N@"
+version = "0.1.0"
+description = "Benchmark load: reads the player every tick and redraws a small panel."
+
+[client]
+component = "client.wasm"
+sha256 = "@SHA256@"
+world = "pumpkin:client/client-mod@0.1.0"
+activation = "always"
+
+[client.capabilities]
+required = ["view", "hud"]

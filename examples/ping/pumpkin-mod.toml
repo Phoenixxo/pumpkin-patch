@@ -1,0 +1,28 @@
+manifest-version = 1
+
+[mod]
+id = "example:ping"
+name = "Ping"
+version = "0.1.0"
+description = "Press O to ask the Pumpkin server for data. The reply is drawn on the HUD."
+
+[client]
+component = "client.wasm"
+sha256 = "@SHA256@"
+world = "pumpkin:client/client-mod@0.1.0"
+activation = "pumpkin-server"
+
+[client.capabilities]
+required = ["net", "hud", "input"]
+
+[client.net]
+protocol = "ping/1"
+channels = ["request", "response"]
+
+[[client.actions]]
+id = "ping"
+title = "Ask the server"
+default-key = "key.keyboard.o"
+
+[server]
+component = "server/target/wasm32-wasip2/release/ping_server.wasm"

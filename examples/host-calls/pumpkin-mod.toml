@@ -1,0 +1,16 @@
+manifest-version = 1
+
+[mod]
+id = "bench:host-calls"
+name = "Host calls"
+version = "0.1.0"
+description = "Benchmark load: 1000 net.max-payload calls per tick."
+
+[client]
+component = "client.wasm"
+sha256 = "@SHA256@"
+world = "pumpkin:client/client-mod@0.1.0"
+activation = "always"
+
+[client.capabilities]
+required = ["net"]

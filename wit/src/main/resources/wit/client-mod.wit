@@ -1,0 +1,110 @@
+// pumpkin:client@0.1.0, the world Pumpkin Patch client components target.
+//
+// This PoC keeps the whole release in one file because Endive CM bindgen reads a single
+// file (Architecture.md R6). pumpkin:base is a nested package in the same file.
+package pumpkin:client@0.1.0;
+
+interface model {
+    use pumpkin:base/types@0.1.0.{uuid, vec3};
+
+    /// A world as seen during one epoch of one session.
+    record world-ref { dimension: string, epoch: u32 }
+
+    record player-snapshot {
+        id: uuid, name: string, pos: vec3,
+        yaw: f32, pitch: f32, health: f32,
+        %world: world-ref,
+    }
+    record entity-snapshot { id: uuid, kind: string, pos: vec3 }
+}
+
+interface log {
+    enum level { trace, debug, info, warn, error }
+    log: func(level: level, message: string);
+}
+
+interface view {
+    use pumpkin:base/types@0.1.0.{host-error};
+    use model.{player-snapshot, entity-snapshot, world-ref};
+
+    local-player: func() -> result<player-snapshot, host-error>;
+    current-world: func() -> result<world-ref, host-error>;
+    /// Batched: one call returns up to `max` entities within `radius` of the player.
+    nearby-entities: func(radius: f64, max: u32) -> result<list<entity-snapshot>, host-error>;
+}
+
+interface net {
+    use pumpkin:base/types@0.1.0.{host-error};
+    /// Staged. The message is sent after the current export returns.
+    send: func(channel: string, payload: list<u8>) -> result<_, host-error>;
+    max-payload: func() -> u32;
+}
+
+interface hud {
+    use pumpkin:base/types@0.1.0.{host-error};
+    /// Batched text measurement. Allowed in the render phase only.
+    measure-text: func(texts: list<string>) -> result<list<u32>, host-error>;
+}
+
+/// Everything the host calls. Every client component exports this interface.
+interface guest {
+    /// Endive CM bindgen refuses `use` in an exported interface, so the guest interface
+    /// declares its own copy of `model.world-ref`.
+    record world-ref { dimension: string, epoch: u32 }
+
+    flags event-kinds { tick, %world, input }
+
+    record session-info { session-id: u64, pumpkin-server: bool, net-negotiated: bool }
+    record init-info { session: session-info, mod-version: string, host-version: string }
+    record init-result { subscriptions: event-kinds }
+
+    record tick-info { game-tick: u64 }
+    /// Architecture.md names this record `net-message`. Endive CM bindgen refuses a variant case
+    /// that shares its payload type's name, so the record is `net-payload` here.
+    record net-payload { channel: string, payload: list<u8> }
+    record action-event { action: string, pressed: bool }
+
+    variant event {
+        session-started(session-info),
+        world-changed(world-ref),
+        tick(tick-info),
+        net-message(net-payload),
+        action(action-event),
+        session-ending,
+    }
+
+    record frame-info { gui-width: u32, gui-height: u32, game-tick: u64 }
+    record text-cmd { x: s32, y: s32, text: string, argb: u32, shadow: bool }
+    record rect-cmd { x: s32, y: s32, w: u32, h: u32, argb: u32 }
+    variant draw-command { text(text-cmd), fill-rect(rect-cmd) }
+    variant frame-output { unchanged, clear, commands(list<draw-command>) }
+
+    init: func(info: init-info) -> result<init-result, string>;
+    handle-events: func(events: list<event>);
+    render: func(frame: frame-info) -> frame-output;
+    shutdown: func();
+}
+
+world client-mod {
+    import log;
+    import view;
+    import net;
+    import hud;
+    export guest;
+}
+
+package pumpkin:base@0.1.0 {
+    interface types {
+        record uuid { most: s64, least: s64 }
+        record vec3 { x: f64, y: f64, z: f64 }
+
+        /// Expected host failures. Traps are reserved for guest bugs and runtime failure.
+        variant host-error {
+            denied,
+            invalid-argument(string),
+            unavailable,
+            stale,
+            limit-exceeded(string),
+        }
+    }
+}

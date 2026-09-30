@@ -1,0 +1,8 @@
+[package]
+name = "radar-protocol"
+edition = "2024"
+version = "0.1.0"
+license = "GPL-3.0-only"
+description = "Wire format shared by the example:radar client and server components"
+
+[dependencies]

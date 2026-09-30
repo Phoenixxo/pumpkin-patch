@@ -1,0 +1,9 @@
+[package]
+name = "pumpkin-client-sdk"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "Bindings for pumpkin:client/client-mod@0.1.0"
+
+[dependencies]
+wit-bindgen.workspace = true

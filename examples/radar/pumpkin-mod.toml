@@ -1,0 +1,45 @@
+manifest-version = 1
+
+[mod]
+id = "example:radar"
+name = "Radar"
+version = "0.1.0"
+description = "A radar with nearby entities, waypoints shared through the server, and far players."
+
+[client]
+component = "client.wasm"
+sha256 = "@SHA256@"
+world = "pumpkin:client/client-mod@0.1.0"
+# Runs everywhere. Waypoints and far players need a Pumpkin server with the radar plugin.
+activation = "always"
+
+[client.capabilities]
+required = ["view", "hud", "input"]
+optional = ["net"]
+
+[client.net]
+protocol = "radar/1"
+channels = ["sync", "wp-add", "wp-clear", "bench", "waypoints", "players", "notice"]
+
+[[client.actions]]
+id = "mark"
+title = "Add waypoint"
+default-key = "key.keyboard.b"
+
+[[client.actions]]
+id = "zoom"
+title = "Cycle radar zoom"
+default-key = "key.keyboard.n"
+
+[[client.actions]]
+id = "toggle"
+title = "Toggle radar"
+default-key = "key.keyboard.m"
+
+[[client.actions]]
+id = "clear"
+title = "Clear my waypoints"
+default-key = "key.keyboard.v"
+
+[server]
+component = "server/target/wasm32-wasip2/release/radar_server.wasm"

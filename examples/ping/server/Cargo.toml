@@ -1,0 +1,21 @@
+[package]
+name = "ping-server"
+edition = "2024"
+version = "0.1.0"
+license = "GPL-3.0-only"
+description = "Server component of example:ping, a Pumpkin plugin"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The mux bridge lives in the Pumpkin fork, checked out as third_party/pumpkin.
+pumpkin-plugin-api = { path = "../../../third_party/pumpkin/crates/pumpkin-plugin-api" }
+tracing = "0.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+[workspace]

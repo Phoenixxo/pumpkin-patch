@@ -1,0 +1,21 @@
+manifest-version = 1
+
+[mod]
+id = "example:trap"
+name = "Trap"
+version = "0.1.0"
+description = "Shows a HUD line and executes unreachable when K is pressed."
+
+[client]
+component = "client.wasm"
+sha256 = "@SHA256@"
+world = "pumpkin:client/client-mod@0.1.0"
+activation = "always"
+
+[client.capabilities]
+required = ["hud", "input"]
+
+[[client.actions]]
+id = "trap"
+title = "Trap now"
+default-key = "key.keyboard.k"

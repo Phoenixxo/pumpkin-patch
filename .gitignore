@@ -1,0 +1,8 @@
+.gradle/
+build/
+run/
+fabric/run/
+guests/target/
+guests/out/
+examples/*/*/target/
+report.md

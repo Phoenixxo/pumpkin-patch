@@ -1,0 +1,12 @@
+[package]
+name = "radar"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pumpkin-client-sdk.workspace = true
+radar-protocol = { path = "../../examples/radar/protocol" }

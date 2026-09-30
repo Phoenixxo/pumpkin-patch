@@ -1,0 +1,21 @@
+manifest-version = 1
+
+[mod]
+id = "example:spin"
+name = "Spin"
+version = "0.1.0"
+description = "Loops forever when J is pressed, to test the call budget."
+
+[client]
+component = "client.wasm"
+sha256 = "@SHA256@"
+world = "pumpkin:client/client-mod@0.1.0"
+activation = "always"
+
+[client.capabilities]
+required = ["input"]
+
+[[client.actions]]
+id = "spin"
+title = "Spin forever"
+default-key = "key.keyboard.j"
