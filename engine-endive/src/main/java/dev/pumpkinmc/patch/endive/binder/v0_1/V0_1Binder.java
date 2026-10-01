@@ -30,11 +30,11 @@ public final class V0_1Binder {
 
     public GuestInstance instantiate(
             ComponentStore store, WasmComponent component, HostImports core, LongSupplier memoryBytes) {
-        ClientMod world = ClientMod.instantiate(store, component, imports(core));
+        ClientModWorld world = ClientModWorld.instantiate(store, component, imports(core));
         return new V0_1Guest(world.guest(), memoryBytes);
     }
 
-    private static ClientMod.Imports imports(HostImports core) {
+    private static ClientModWorld.Imports imports(HostImports core) {
         var log = (dev.pumpkinmc.patch.endive.binder.v0_1.pumpkin.client.log.Host)
                 (level, message) -> core.log().log(convert(level), message);
 
@@ -102,7 +102,7 @@ public final class V0_1Binder {
             }
         };
 
-        return new ClientMod.Imports() {
+        return new ClientModWorld.Imports() {
             @Override
             public dev.pumpkinmc.patch.endive.binder.v0_1.pumpkin.client.log.Host log() {
                 return log;

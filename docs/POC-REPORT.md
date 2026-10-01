@@ -5,13 +5,17 @@ mod that loads Wasm components with Endive CM, and negotiates them with a real P
 
 ## Versions and machine
 
+The numbers in this report and in `docs/perf-results.md` were measured on the first pins: Endive 90ad577e,
+Endive CM 5cd51fb plus the fix, and Pumpkin master 4426d1113. That state is pumpkin-patch commit c3fb86e,
+and both forks keep it under the tag `poc-2026-09-30`. The table below lists the current pins.
+
 | | |
 | --- | --- |
 | Machine | Apple M4 Pro, 24 GiB, macOS 26.6.2 |
 | Java | 25.0.2 |
 | Minecraft / Fabric | 26.3 (protocol 777), Loader 0.19.5, Fabric API 0.161.0+26.3, Loom 1.18.2, Gradle 9.7.1 |
-| Endive / Endive CM | `main` at 90ad577e / 5cd51fb plus one fix (see below), submodules in `third_party/`, installed in `~/.m2-pumpkin-patch` |
-| Pumpkin | master 4426d1113 plus the mux patch, branch `feat/pumpkin-patch-mux` of github.com/Phoenixxo/Pumpkin, submodule `third_party/pumpkin` |
+| Endive / Endive CM | `main` at b0835978 / 4a2c4ed plus one fix (see below), submodules in `third_party/`, installed in `~/.m2-pumpkin-patch` |
+| Pumpkin | `refactor/split-pumpkin-core` (50a40ce64) plus the mux patch, branch `feat/pumpkin-patch-mux` of github.com/Phoenixxo/Pumpkin, submodule `third_party/pumpkin` |
 | Guests | Rust 1.98.0, wit-bindgen 0.62, wasm-tools 1.258.0 |
 
 ## Layout
@@ -38,7 +42,7 @@ for p in ping radar; do
   (cd examples/$p/server && cargo build --release --target wasm32-wasip2)
   cp examples/$p/server/target/wasm32-wasip2/release/${p}_server.wasm run/server/plugins/
 done
-(cd third_party/pumpkin && cargo build --release)
+(cd third_party/pumpkin && RUST_MIN_STACK=536870912 cargo build --release)  # rustc overflows its stack on pumpkin-data without this
 ./gradlew build                               # all tests + fabric/build/libs/pumpkin-patch-0.1.0.jar
 scripts/install-mods.sh fabric/run/pumpkin-mods radar ping trap spin
 ```
@@ -131,7 +135,7 @@ These need a client window, so they were left for a manual run:
   alias with raw `Type.equals`. That fails for any record whose fields refer to other types by index, so a
   component that `use`s such a record (the radar's `entity-snapshot`) could not link. The fix compares resolved
   slots with `TypeMatcher.slotsMatch`, and adds two regression tests.
-  - Code: branch `fix/outer-alias-structural-type-match` of github.com/Phoenixxo/endive-cm, commit 3e6e328,
+  - Code: branch `fix/outer-alias-structural-type-match` of github.com/Phoenixxo/endive-cm (fix in 3e6e328),
     checked out as `third_party/endive-cm`.
   - The full Endive CM runtime suite passes: 1306 run, 0 failed, 8 skipped.
 - **Pumpkin: configuration-phase disconnect.** `CConfigDisconnect` wrote its reason as a string, but 26.3
