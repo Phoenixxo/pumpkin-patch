@@ -9,6 +9,7 @@ import dev.pumpkinmc.patch.core.runtime.Runtime.RuntimeLimits;
 import dev.pumpkinmc.patch.endive.binder.v0_1.V0_1Binder;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -38,7 +39,12 @@ public final class EndiveComponentRuntime implements ComponentRuntime {
         /** Endive's interpreter. */
         INTERPRETER,
         /** Endive's runtime compiler, which translates each core module to JVM bytecode. */
-        COMPILER
+        COMPILER,
+        /**
+         * Redline, which compiles each core module to native code with Cranelift. It needs one of
+         * Redline's targets and Java 25. Elsewhere this engine falls back to {@link #COMPILER}.
+         */
+        REDLINE
     }
 
     private static final String GUEST_EXPORT = "pumpkin:client/guest@";
@@ -55,15 +61,34 @@ public final class EndiveComponentRuntime implements ComponentRuntime {
 
     private final Engine engine;
     private final boolean validate;
+    private final String redlineTriple;
+    private final Path redlineCache;
 
     public EndiveComponentRuntime(Engine engine, boolean validate) {
-        this.engine = engine;
+        this(engine, validate, null);
+    }
+
+    /**
+     * @param redlineCache where {@link Engine#REDLINE} keeps native code between runs, or {@code
+     *     null} to compile every time
+     */
+    public EndiveComponentRuntime(Engine engine, boolean validate, Path redlineCache) {
+        String triple = engine == Engine.REDLINE ? RedlineCode.hostTriple().orElse(null) : null;
+        this.engine = engine == Engine.REDLINE && triple == null ? Engine.COMPILER : engine;
         this.validate = validate;
+        this.redlineTriple = triple;
+        this.redlineCache = redlineCache;
+    }
+
+    /** The engine core modules run on, which is not the one asked for when Redline is unsupported. */
+    public Engine engine() {
+        return engine;
     }
 
     @Override
     public String describe() {
-        return "Endive CM (" + engine.name().toLowerCase() + (validate ? ", validated" : "") + ")";
+        String name = engine == Engine.REDLINE ? "redline " + redlineTriple : engine.name().toLowerCase();
+        return "Endive CM (" + name + (validate ? ", validated" : "") + ")";
     }
 
     @Override
@@ -94,6 +119,16 @@ public final class EndiveComponentRuntime implements ComponentRuntime {
         V0_1Binder binder = BinderRegistry.lookup(source.declaredWorld());
         ComponentInspector.check(source, imports, exports, binder.minorVersion());
 
+        if (engine == Engine.REDLINE) {
+            Map<WasmModule, byte[][]> code;
+            try {
+                code = RedlineCode.compile(component, source.bytes(), redlineTriple, redlineCache);
+            } catch (RuntimeException e) {
+                throw new CompileException(Reason.PARSE_ERROR, source.modId() + ": native compile failed: " + e, e);
+            }
+            return EndiveCompiledComponent.redline(
+                    source, component, code, compileModules(component), redlineTriple, Set.copyOf(imports), binder);
+        }
         Function<Instance, Machine> machines = engine == Engine.COMPILER ? compileModules(component) : null;
         return new EndiveCompiledComponent(source, component, machines, Set.copyOf(imports), binder);
     }

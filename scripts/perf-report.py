@@ -120,7 +120,9 @@ def kib(b):
 
 
 pairs = [("one", "one-java"), ("several", "several-java"), ("several-interpreter", "several-java"),
-         ("calls", "calls-java"), ("rtt", "rtt-java")]
+         ("calls", "calls-java"), ("rtt", "rtt-java"),
+         ("one-redline", "one-java"), ("several-redline", "several-java"),
+         ("calls-redline", "calls-java"), ("rtt-redline", "rtt-java")]
 rows = []
 for wasm, java in pairs:
     w = load(os.path.join(root, f"bench-{wasm}.json"))
@@ -147,10 +149,10 @@ if rows:
     out.extend(rows)
     out.append("")
 
-radar = {e: load(os.path.join(root, f"radar-{e}.json")) for e in ("compiler", "interpreter", "java")}
-if radar["java"] and (radar["compiler"] or radar["interpreter"]):
+radar = {e: load(os.path.join(root, f"radar-{e}.json")) for e in ("compiler", "redline", "interpreter", "java")}
+if radar["java"] and (radar["compiler"] or radar["redline"] or radar["interpreter"]):
     m = "example:radar"
-    engines = [e for e in ("compiler", "interpreter") if radar[e]]
+    engines = [e for e in ("compiler", "redline", "interpreter") if radar[e]]
     out.append("## example:radar against the Java control\n")
     header = ["phase", "Java us/tick"]
     for e in engines:

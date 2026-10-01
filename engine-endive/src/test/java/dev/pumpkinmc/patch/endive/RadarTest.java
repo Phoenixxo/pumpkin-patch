@@ -28,7 +28,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class RadarTest {
     static final List<String> CHANNELS = List.of("sync", "wp-add", "wp-clear", "bench", "waypoints", "players", "notice");
 
-    /** The two Endive engines, and the Java port as the control. */
+    /** The three Endive engines, and the Java port as the control. */
     static ComponentRuntime runtime(String engine) {
         return engine.equals("java")
                 ? new JavaComponentRuntime()
@@ -89,7 +89,7 @@ class RadarTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"interpreter", "compiler", "java"})
+    @ValueSource(strings = {"interpreter", "compiler", "redline", "java"})
     void radarDrawsEntitiesAndServerWaypoints(String engine) throws Exception {
         try (var h = radar(engine)) {
             ComponentInstance radar = h.patch.instances().getFirst();

@@ -18,7 +18,9 @@ public final class TrapTranslator {
         }
         String message = String.valueOf(root.getMessage());
         TrapKind kind;
-        if (root instanceof WasmInterruptedException) {
+        // Redline reports an interrupt as a trap with this message, where Endive throws its own type.
+        if (root instanceof WasmInterruptedException
+                || (root instanceof TrapException && message.equals("interrupted"))) {
             kind = TrapKind.BUDGET_EXHAUSTED;
         } else if (root instanceof TrapException) {
             String m = message.toLowerCase();

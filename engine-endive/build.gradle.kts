@@ -8,6 +8,10 @@ dependencies {
     implementation("run.endive.cm:parser:$endive")
     implementation("run.endive.cm:wasm-tools:$endive")
     implementation("run.endive:compiler:$endive")
+    // Redline: Cranelift native code. Its runner uses Panama, so it needs Java 25.
+    for (m in listOf("api", "bridge", "compiler", "runner")) {
+        implementation("run.endive:redline-$m-experimental:$endive")
+    }
     compileOnly("org.slf4j:slf4j-api:2.0.17")
     testImplementation("org.slf4j:slf4j-api:2.0.17")
     testRuntimeOnly("org.slf4j:slf4j-simple:2.0.17")

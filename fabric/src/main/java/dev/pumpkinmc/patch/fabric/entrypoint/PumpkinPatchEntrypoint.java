@@ -64,10 +64,11 @@ public final class PumpkinPatchEntrypoint implements ClientModInitializer {
 
         // "java" runs the Java ports of the samples: the benchmark control, not a sandbox.
         String engineName = System.getProperty("pumpkinpatch.engine", "compiler").toLowerCase(Locale.ROOT);
+        // "redline" keeps the native code it compiles under the game directory, keyed by mod hash.
         ComponentRuntime runtime = engineName.equals("java")
                 ? new JavaComponentRuntime()
                 : new EndiveComponentRuntime(EndiveComponentRuntime.Engine.valueOf(engineName.toUpperCase(Locale.ROOT)),
-                        true);
+                        true, gameDir.resolve("pumpkin-patch").resolve("redline-cache"));
         var transport = new FabricMuxTransport();
         var canvas = new FabricPorts.HudCanvas();
         var clock = new FabricPorts.Clock();

@@ -26,6 +26,11 @@ for s in $scenarios; do
     rtt) run rtt compiler host 10 ping ;;
     calls) run calls compiler host 0 host-calls ;;
     several-interpreter) run several-interpreter interpreter host 0 hud-bench:8 ;;
+    # Redline: the same samples as native code. The first launch compiles and caches it.
+    one-redline) run one-redline redline host 0 hud-bench:1 ;;
+    several-redline) run several-redline redline host 0 hud-bench:8 ;;
+    rtt-redline) run rtt-redline redline host 10 ping ;;
+    calls-redline) run calls-redline redline host 0 host-calls ;;
     # The Java control: the same samples ported to plain Java, through the same host.
     one-java) run one-java java host 0 hud-bench:1 ;;
     several-java) run several-java java host 0 hud-bench:8 ;;

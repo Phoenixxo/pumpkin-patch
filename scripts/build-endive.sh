@@ -28,9 +28,9 @@ pinned() { # dir commit: refuse to build anything but the tested commit
   fi
 }
 
-pinned "$endive" 3ec8113b
+pinned "$endive" c596b80d
 (cd "$endive" && mvn "${mvn_args[@]}" install)
 
-pinned "$endive_cm" d6b5020
+pinned "$endive_cm" 5106f11
 (cd "$endive_cm" && mvn "${mvn_args[@]}" install)
 echo "Installed Endive and Endive CM 999-SNAPSHOT into $repo"

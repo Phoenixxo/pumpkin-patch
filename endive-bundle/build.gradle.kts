@@ -1,4 +1,4 @@
-// Endive and Endive CM merged into one jar for the Fabric mod to nest.
+// Endive, Redline and Endive CM merged into one jar for the Fabric mod to nest.
 //
 // Both publish artifacts named `runtime` and `wasm-tools`. Jar-in-jar nests by file name, so
 // including them one by one silently drops one of each pair. Merging sidesteps the collision.
@@ -19,6 +19,8 @@ dependencies {
         "run.endive.cm:runtime", "run.endive.cm:parser", "run.endive.cm:types", "run.endive.cm:canonical-abi",
         "run.endive.cm:wasm-tools", "run.endive:runtime", "run.endive:wasm", "run.endive:compiler",
         "run.endive:wasm-tools", "run.endive:wasi", "run.endive:log",
+        "run.endive:redline-api-experimental", "run.endive:redline-bridge-experimental",
+        "run.endive:redline-compiler-experimental", "run.endive:redline-runner-experimental",
     )) {
         merged("$a:$endive")
     }
