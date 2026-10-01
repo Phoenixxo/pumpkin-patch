@@ -15,7 +15,7 @@ and both forks keep it under the tag `poc-2026-09-30`. The table below lists the
 | Java | 25.0.2 |
 | Minecraft / Fabric | 26.3 (protocol 777), Loader 0.19.5, Fabric API 0.161.0+26.3, Loom 1.18.2, Gradle 9.7.1 |
 | Endive / Endive CM | `main` at b0835978 plus two Redline fixes (shared watchdog, cached memory layouts) / `main` at 4a2c4ed plus one fix (see below), direct record and byte lowering, and a core instance builder hook, submodules in `third_party/` from github.com/Phoenixxo/endive and /endive-cm, installed in `~/.m2-pumpkin-patch` |
-| Pumpkin | `refactor/split-pumpkin-core` (50a40ce64) plus the mux patch, branch `feat/pumpkin-patch-mux` of github.com/Phoenixxo/Pumpkin, submodule `third_party/pumpkin` |
+| Pumpkin | `refactor/split-pumpkin-core` (01bdc122b) plus the mux patch, branch `feat/pumpkin-patch-mux` of github.com/Phoenixxo/Pumpkin, submodule `third_party/pumpkin` |
 | Guests | Rust 1.98.0, wit-bindgen 0.62, wasm-tools 1.258.0 |
 
 ## Layout
