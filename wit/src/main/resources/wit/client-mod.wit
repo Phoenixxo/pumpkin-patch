@@ -15,7 +15,9 @@ interface model {
         yaw: f32, pitch: f32, health: f32,
         %world: world-ref,
     }
-    record entity-snapshot { id: uuid, kind: string, pos: vec3 }
+    /// `kind` is an entity type id. `view.entity-kind-name` gives its registry name, and an id
+    /// keeps its meaning for the life of the component instance.
+    record entity-snapshot { id: uuid, kind: u32, pos: vec3 }
 }
 
 interface log {
@@ -31,6 +33,8 @@ interface view {
     current-world: func() -> result<world-ref, host-error>;
     /// Batched: one call returns up to `max` entities within `radius` of the player.
     nearby-entities: func(radius: f64, max: u32) -> result<list<entity-snapshot>, host-error>;
+    /// The registry name, such as `minecraft:zombie`, of an `entity-snapshot` kind id.
+    entity-kind-name: func(kind: u32) -> option<string>;
 }
 
 interface net {

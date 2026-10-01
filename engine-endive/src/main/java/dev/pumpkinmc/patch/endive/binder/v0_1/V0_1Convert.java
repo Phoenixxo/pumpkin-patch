@@ -28,23 +28,6 @@ import java.util.Set;
 final class V0_1Convert {
     private V0_1Convert() {}
 
-    /** {@code list<u8>} arrives as {@code List<Short>} from Endive CM bindgen. */
-    static byte[] bytes(List<Short> list) {
-        byte[] out = new byte[list.size()];
-        for (int i = 0; i < out.length; i++) {
-            out[i] = list.get(i).byteValue();
-        }
-        return out;
-    }
-
-    static List<Short> list(byte[] bytes) {
-        List<Short> out = new ArrayList<>(bytes.length);
-        for (byte b : bytes) {
-            out.add((short) (b & 0xFF));
-        }
-        return out;
-    }
-
     static dev.pumpkinmc.patch.endive.binder.v0_1.pumpkin.base.types.HostError error(HostError e) {
         return switch (e.code()) {
             case DENIED -> new dev.pumpkinmc.patch.endive.binder.v0_1.pumpkin.base.types.HostError.Denied();
@@ -68,9 +51,9 @@ final class V0_1Convert {
                 world(p.world()));
     }
 
-    static EntitySnapshot entity(Model.EntitySnapshot e) {
+    static EntitySnapshot entity(Model.EntitySnapshot e, long kind) {
         return new EntitySnapshot(
-                new Uuid(e.id().getMostSignificantBits(), e.id().getLeastSignificantBits()), e.kind(), vec3(e.pos()));
+                new Uuid(e.id().getMostSignificantBits(), e.id().getLeastSignificantBits()), kind, vec3(e.pos()));
     }
 
     static WorldRef world(Model.WorldRef w) {
@@ -122,7 +105,7 @@ final class V0_1Convert {
                                     new TickInfo(BigInteger.valueOf(t.gameTick())));
                         case Event.NetMessage m ->
                             new dev.pumpkinmc.patch.endive.binder.v0_1.exports.pumpkin.client.guest.Event.NetMessage(
-                                    new NetPayload(m.channel(), list(m.payload())));
+                                    new NetPayload(m.channel(), m.payload()));
                         case Event.Action a ->
                             new dev.pumpkinmc.patch.endive.binder.v0_1.exports.pumpkin.client.guest.Event.Action(
                                     new ActionEvent(a.actionId(), a.pressed()));

@@ -40,9 +40,9 @@ public final class V0_1Binder {
 
         var net = new dev.pumpkinmc.patch.endive.binder.v0_1.pumpkin.client.net.Host() {
             @Override
-            public void send(String channel, List<Short> payload) {
+            public void send(String channel, byte[] payload) {
                 try {
-                    core.net().send(channel, V0_1Convert.bytes(payload));
+                    core.net().send(channel, payload);
                 } catch (HostError e) {
                     throw new dev.pumpkinmc.patch.endive.binder.v0_1.pumpkin.client.net.HostErrorException(
                             V0_1Convert.error(e));
@@ -56,6 +56,8 @@ public final class V0_1Binder {
         };
 
         var view = new dev.pumpkinmc.patch.endive.binder.v0_1.pumpkin.client.view.Host() {
+            private final EntityKinds kinds = new EntityKinds();
+
             @Override
             public dev.pumpkinmc.patch.endive.binder.v0_1.pumpkin.client.model.PlayerSnapshot localPlayer() {
                 try {
@@ -82,12 +84,17 @@ public final class V0_1Binder {
                     List<dev.pumpkinmc.patch.endive.binder.v0_1.pumpkin.client.model.EntitySnapshot> out =
                             new ArrayList<>();
                     for (Model.EntitySnapshot e : core.view().nearbyEntities(radius, clamped)) {
-                        out.add(V0_1Convert.entity(e));
+                        out.add(V0_1Convert.entity(e, kinds.id(e.kind())));
                     }
                     return out;
                 } catch (HostError e) {
                     throw viewError(e);
                 }
+            }
+
+            @Override
+            public String entityKindName(Long kind) {
+                return kinds.name(kind);
             }
         };
 

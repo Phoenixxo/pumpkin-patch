@@ -65,6 +65,8 @@ struct State {
     pos: [f64; 3],
     yaw: f32,
     entities: Vec<(Kind, f64, f64)>,
+    /// Entity kind ids already looked up, indexed by id.
+    kinds: Vec<Option<Kind>>,
     waypoints: Vec<Waypoint>,
     remote: Vec<RemotePlayer>,
     stats: ServerStats,
@@ -75,6 +77,22 @@ struct State {
     /// A digest of everything drawn, so an unchanged radar returns `unchanged`.
     drawn: u64,
     dirty: bool,
+}
+
+impl State {
+    /// The kind behind an entity kind id, asking the host only the first time an id is seen.
+    fn kind(&mut self, id: u32) -> Kind {
+        let index = id as usize;
+        if let Some(Some(kind)) = self.kinds.get(index) {
+            return *kind;
+        }
+        let kind = view::entity_kind_name(id).map_or(Kind::Other, |name| Kind::of(&name));
+        if self.kinds.len() <= index {
+            self.kinds.resize(index + 1, None);
+        }
+        self.kinds[index] = Some(kind);
+        kind
+    }
 }
 
 thread_local! {
@@ -166,7 +184,8 @@ impl Guest for Radar {
             s.entities.clear();
             if let Ok(list) = view::nearby_entities(radius, MAX_ENTITIES) {
                 for e in list {
-                    s.entities.push((Kind::of(&e.kind), e.pos.x - s.pos[0], e.pos.z - s.pos[2]));
+                    let kind = s.kind(e.kind);
+                    s.entities.push((kind, e.pos.x - s.pos[0], e.pos.z - s.pos[2]));
                 }
             }
         });

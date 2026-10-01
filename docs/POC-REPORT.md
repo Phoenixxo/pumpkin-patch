@@ -14,7 +14,7 @@ and both forks keep it under the tag `poc-2026-09-30`. The table below lists the
 | Machine | Apple M4 Pro, 24 GiB, macOS 26.6.2 |
 | Java | 25.0.2 |
 | Minecraft / Fabric | 26.3 (protocol 777), Loader 0.19.5, Fabric API 0.161.0+26.3, Loom 1.18.2, Gradle 9.7.1 |
-| Endive / Endive CM | `main` at b0835978 plus the shared Redline watchdog (3ec8113b) / `main` at 4a2c4ed plus one fix (see below), submodules in `third_party/` from github.com/Phoenixxo/endive and /endive-cm, installed in `~/.m2-pumpkin-patch` |
+| Endive / Endive CM | `main` at b0835978 plus the shared Redline watchdog (3ec8113b) / `main` at 4a2c4ed plus one fix (see below) and direct record and byte lowering, submodules in `third_party/` from github.com/Phoenixxo/endive and /endive-cm, installed in `~/.m2-pumpkin-patch` |
 | Pumpkin | `refactor/split-pumpkin-core` (50a40ce64) plus the mux patch, branch `feat/pumpkin-patch-mux` of github.com/Phoenixxo/Pumpkin, submodule `third_party/pumpkin` |
 | Guests | Rust 1.98.0, wit-bindgen 0.62, wasm-tools 1.258.0 |
 
