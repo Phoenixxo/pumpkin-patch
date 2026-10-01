@@ -7,7 +7,7 @@
 # component that `use`s a record whose fields name other types (the radar's entity-snapshot)
 # failed to link. The fix compares them structurally.
 #
-#   ENDIVE_DIR     checkout of github.com/bytecodealliance/endive  (default third_party/endive)
+#   ENDIVE_DIR     checkout of github.com/Phoenixxo/endive          (default third_party/endive)
 #   ENDIVE_CM_DIR  checkout of github.com/Phoenixxo/endive-cm      (default third_party/endive-cm)
 #   ENDIVE_JAVA_HOME  JDK 25 home (default /Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home)
 set -euo pipefail

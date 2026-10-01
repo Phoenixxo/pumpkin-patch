@@ -1,6 +1,6 @@
 [submodule "third_party/endive"]
 	path = third_party/endive
-	url = https://github.com/bytecodealliance/endive.git
+	url = https://github.com/Phoenixxo/endive.git
 [submodule "third_party/endive-cm"]
 	path = third_party/endive-cm
 	url = https://github.com/Phoenixxo/endive-cm.git
