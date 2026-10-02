@@ -86,8 +86,9 @@ public final class PumpkinPatchEntrypoint implements ClientModInitializer {
         patch.discover(mods);
         var keys = KeyBindingRegistrar.register(patch.declaredActions());
         patch.compileInBackground();
-        LOG.info("[PumpkinPatch] runtime {}, updates on {}, mods from {}", runtime.describe(),
-                workers ? "worker threads" : "the client thread", mods);
+        LOG.info("[PumpkinPatch] runtime {}, updates on {}, HUD rectangles {}, mods from {}", runtime.describe(),
+                workers ? "worker threads" : "the client thread",
+                FabricPorts.HudCanvas.batching() ? "batched" : "drawn one by one", mods);
 
         MuxPayload.register();
         FabricMuxTransport.registerReceivers(patch);

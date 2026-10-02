@@ -248,6 +248,12 @@ public final class Autopilot {
         });
         waitTicks(seconds * 20);
         step(mc -> {
+            if (label.equals("entities-256-waypoints-200")) {
+                // One picture per sweep, as F2 takes it, so a change to how the HUD is drawn can be
+                // checked by eye.
+                net.minecraft.client.Screenshot.grab(mc, false);
+                LOG.info("[PumpkinPatch autopilot] screenshot taken at {}", label);
+            }
             String heap = BenchJson.heap(probe.heapSamples());
             phases.add("{\"phase\":" + BenchJson.str(label) + ",\"config\":" + config + ",\"heap\":" + heap
                     + ",\"instances\":" + BenchJson.instances(patch) + ",\"perf\":" + patch.perf().toJson() + "}");

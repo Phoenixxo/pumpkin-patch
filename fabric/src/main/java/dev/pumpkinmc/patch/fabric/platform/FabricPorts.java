@@ -57,9 +57,19 @@ public final class FabricPorts {
 
     /** Draws into the graphics context of the HUD pass currently running. */
     public static final class HudCanvas implements Ports.HudCanvas {
+        private final HudBatcher batcher = new HudBatcher();
+
+        /** Whether HUD rectangles are batched, for the startup log. */
+        public static boolean batching() {
+            return HudBatcher.batching();
+        }
         private GuiGraphicsExtractor graphics;
 
+        /** Binds the frame's graphics for the HUD pass, or unbinds with {@code null} after it. */
         public void bind(GuiGraphicsExtractor g) {
+            if (g != null) {
+                batcher.beginFrame();
+            }
             graphics = g;
         }
 
@@ -69,13 +79,7 @@ public final class FabricPorts {
             if (g == null) {
                 return;
             }
-            var font = Minecraft.getInstance().font;
-            for (Model.DrawCommand c : commands) {
-                switch (c) {
-                    case Model.DrawCommand.Text t -> g.text(font, t.text(), t.x(), t.y(), t.argb(), t.shadow());
-                    case Model.DrawCommand.FillRect r -> g.fill(r.x(), r.y(), r.x() + r.w(), r.y() + r.h(), r.argb());
-                }
-            }
+            batcher.draw(g, Minecraft.getInstance().font, commands);
         }
 
         @Override
