@@ -9,14 +9,19 @@ run() { # label engine mode pingEvery mods...
   local label="$1" engine="$2" mode="$3" ping="$4"; shift 4
   local mods="$root/fabric/run/bench-mods/$label"
   scripts/install-mods.sh "$mods" "$@" > /dev/null
-  echo "== $label ($engine, $mode, mods: ${*:-none})"
-  ./gradlew -q :fabric:runClient --no-configuration-cache \
+  i=$((i + 1))
+  watch_client "[$i/$total] bench $label ($engine)" "run/client-bench-$label.log" \
+    "bench:$WARMUP:$SECONDS_MEASURED" -- \
+    ./gradlew -q :fabric:runClient --no-configuration-cache \
     -Dpumpkinpatch.autopilot=bench -Dpumpkinpatch.mode="$mode" -Dpumpkinpatch.engine="$engine" \
     -Dpumpkinpatch.mods="$mods" -Dpumpkinpatch.bench.label="$label" \
     -Dpumpkinpatch.bench.warmup="$WARMUP" -Dpumpkinpatch.bench.seconds="$SECONDS_MEASURED" \
-    -Dpumpkinpatch.bench.pingEvery="$ping" > "run/client-bench-$label.log" 2>&1
+    -Dpumpkinpatch.bench.pingEvery="$ping"
 }
+. scripts/progress.sh
 scenarios="${*:-baseline idle one several rtt calls several-interpreter}"
+set -- $scenarios
+total=$# i=0
 for s in $scenarios; do
   case "$s" in
     baseline) run baseline compiler baseline 0 ;;

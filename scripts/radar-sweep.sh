@@ -8,10 +8,12 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 mods="$root/fabric/run/bench-mods/radar"
 scripts/install-mods.sh "$mods" radar > /dev/null
+. scripts/progress.sh
 [ $# -gt 0 ] || set -- compiler redline java
+i=0
 for engine in "$@"; do
-  echo "== radar sweep ($engine)"
-  ./gradlew -q :fabric:runClient --no-configuration-cache \
-    -Dpumpkinpatch.autopilot=radar -Dpumpkinpatch.engine="$engine" -Dpumpkinpatch.mods="$mods" \
-    > "run/client-radar-$engine.log" 2>&1
+  i=$((i + 1))
+  watch_client "[$i/$#] radar $engine" "run/client-radar-$engine.log" radar -- \
+    ./gradlew -q :fabric:runClient --no-configuration-cache \
+    -Dpumpkinpatch.autopilot=radar -Dpumpkinpatch.engine="$engine" -Dpumpkinpatch.mods="$mods"
 done
