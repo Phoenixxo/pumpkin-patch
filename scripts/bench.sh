@@ -16,12 +16,13 @@ run() { # label engine mode pingEvery mods...
     -Dpumpkinpatch.autopilot=bench -Dpumpkinpatch.mode="$mode" -Dpumpkinpatch.engine="$engine" \
     -Dpumpkinpatch.mods="$mods" -Dpumpkinpatch.bench.label="$label" \
     -Dpumpkinpatch.bench.warmup="$WARMUP" -Dpumpkinpatch.bench.seconds="$SECONDS_MEASURED" \
-    -Dpumpkinpatch.bench.pingEvery="$ping"
+    -Dpumpkinpatch.bench.pingEvery="$ping" \
+    || failed="$failed $label"
 }
 . scripts/progress.sh
 scenarios="${*:-baseline idle one several rtt calls several-interpreter}"
 set -- $scenarios
-total=$# i=0
+total=$# i=0 failed=""
 for s in $scenarios; do
   case "$s" in
     baseline) run baseline compiler baseline 0 ;;
@@ -44,3 +45,7 @@ for s in $scenarios; do
     *) echo "unknown scenario $s" >&2; exit 1 ;;
   esac
 done
+if [ -n "$failed" ]; then
+  echo "exited with an error:$failed" >&2
+  exit 1
+fi

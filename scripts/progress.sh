@@ -66,6 +66,8 @@ watch_client() {
   trap - INT TERM
   if [ "$rc" -eq 0 ]; then
     status="done"
+  elif grep -qF "autopilot] wrote" "$log" 2>/dev/null; then
+    status="results written, then the client exited with $rc (see $log)"
   else
     status="failed (exit $rc, see $log)"
   fi

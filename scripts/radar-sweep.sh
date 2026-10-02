@@ -10,10 +10,15 @@ mods="$root/fabric/run/bench-mods/radar"
 scripts/install-mods.sh "$mods" radar > /dev/null
 . scripts/progress.sh
 [ $# -gt 0 ] || set -- compiler redline java
-i=0
+i=0 failed=""
 for engine in "$@"; do
   i=$((i + 1))
   watch_client "[$i/$#] radar $engine" "run/client-radar-$engine.log" radar -- \
     ./gradlew -q :fabric:runClient --no-configuration-cache \
-    -Dpumpkinpatch.autopilot=radar -Dpumpkinpatch.engine="$engine" -Dpumpkinpatch.mods="$mods"
+    -Dpumpkinpatch.autopilot=radar -Dpumpkinpatch.engine="$engine" -Dpumpkinpatch.mods="$mods" \
+    || failed="$failed $engine"
 done
+if [ -n "$failed" ]; then
+  echo "exited with an error:$failed" >&2
+  exit 1
+fi
