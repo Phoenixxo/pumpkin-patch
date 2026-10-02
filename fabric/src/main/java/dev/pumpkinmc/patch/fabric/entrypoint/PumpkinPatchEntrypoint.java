@@ -73,15 +73,21 @@ public final class PumpkinPatchEntrypoint implements ClientModInitializer {
         var canvas = new FabricPorts.HudCanvas();
         var clock = new FabricPorts.Clock();
         var ports = new Ports(new FabricPorts.PlayerView(), canvas, transport, clock, new FabricPorts.FaultReporter());
+        // Wasm updates run on workers, off the client thread. The Java control stays on the client
+        // thread, as a Java mod would. -Dpumpkinpatch.workers overrides either.
+        boolean workers = Boolean.parseBoolean(
+                System.getProperty("pumpkinpatch.workers", String.valueOf(!engineName.equals("java"))));
         // Fabric constructs client entrypoints on the client (render) thread.
-        var patch = PumpkinPatch.create(PatchConfig.defaults(), runtime, ports, Thread.currentThread());
+        var patch = PumpkinPatch.create(PatchConfig.defaults().withWorkers(workers), runtime, ports,
+                Thread.currentThread());
         patch.perf().reset();
 
         Path mods = Path.of(System.getProperty("pumpkinpatch.mods", gameDir.resolve("pumpkin-mods").toString()));
         patch.discover(mods);
         var keys = KeyBindingRegistrar.register(patch.declaredActions());
         patch.compileInBackground();
-        LOG.info("[PumpkinPatch] runtime {}, mods from {}", runtime.describe(), mods);
+        LOG.info("[PumpkinPatch] runtime {}, updates on {}, mods from {}", runtime.describe(),
+                workers ? "worker threads" : "the client thread", mods);
 
         MuxPayload.register();
         FabricMuxTransport.registerReceivers(patch);

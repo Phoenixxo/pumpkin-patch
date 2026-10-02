@@ -31,7 +31,7 @@ public final class V0_1Binder {
     public GuestInstance instantiate(
             ComponentStore store, WasmComponent component, HostImports core, LongSupplier memoryBytes) {
         ClientModWorld world = ClientModWorld.instantiate(store, component, imports(core));
-        return new V0_1Guest(world.guest(), memoryBytes);
+        return new V0_1Guest(world.guest(), memoryBytes, store);
     }
 
     private static ClientModWorld.Imports imports(HostImports core) {
@@ -151,11 +151,13 @@ public final class V0_1Binder {
     private static final class V0_1Guest implements GuestInstance {
         private final Guest guest;
         private final LongSupplier memoryBytes;
+        private final ComponentStore store;
         private long conversionNanos;
 
-        V0_1Guest(Guest guest, LongSupplier memoryBytes) {
+        V0_1Guest(Guest guest, LongSupplier memoryBytes, ComponentStore store) {
             this.guest = guest;
             this.memoryBytes = memoryBytes;
+            this.store = store;
         }
 
         /** Times one conversion, so the report can separate it from the whole call. */
@@ -211,9 +213,10 @@ public final class V0_1Binder {
             return memoryBytes.getAsLong();
         }
 
+        /** Releases the store, including any native memory and code an engine such as Redline holds. */
         @Override
         public void close() {
-            // The store holds no native resources. Dropping the last reference releases it.
+            store.close();
         }
     }
 }

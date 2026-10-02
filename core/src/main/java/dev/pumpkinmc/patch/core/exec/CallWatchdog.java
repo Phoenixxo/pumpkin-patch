@@ -1,10 +1,13 @@
 package dev.pumpkinmc.patch.core.exec;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Stops a guest call that exceeds its budget by interrupting the calling thread, which the runtime
- * turns into a trap.
+ * turns into a trap. Calls on several threads are watched at once, each against its own deadline.
  *
- * <p>The calling thread is the Minecraft client thread, and an interrupt that escapes a guest call
+ * <p>A calling thread may be the Minecraft client thread, and an interrupt that escapes a guest call
  * would break Minecraft's blocking I/O. So an interrupt is only ever delivered while guest code is
  * on the stack. If the budget runs out during a host import, delivery waits until the import returns
  * to the guest. {@link #disarm()} runs after the call has ended and clears the flag, and no interrupt
@@ -13,12 +16,22 @@ package dev.pumpkinmc.patch.core.exec;
 public final class CallWatchdog implements AutoCloseable {
     private final Object lock = new Object();
     private final Thread thread;
-    private Thread target;
-    private long deadline;
-    private boolean inHost;
-    private boolean fired;
-    private long firedAt;
+    private final Map<Thread, Slot> slots = new HashMap<>();
     private boolean closed;
+
+    /** One armed call. */
+    private static final class Slot {
+        long deadline;
+        boolean inHost;
+        boolean fired;
+        long firedAt;
+        /** When the budget was suspended, or 0 while it runs. */
+        long suspendedAt;
+
+        Slot(long deadline) {
+            this.deadline = deadline;
+        }
+    }
 
     public CallWatchdog() {
         thread = new Thread(this::run, "PumpkinPatch-watchdog");
@@ -29,10 +42,7 @@ public final class CallWatchdog implements AutoCloseable {
     /** Starts the budget for a call on the current thread. */
     public void arm(long budgetNanos) {
         synchronized (lock) {
-            target = Thread.currentThread();
-            deadline = System.nanoTime() + budgetNanos;
-            inHost = false;
-            fired = false;
+            slots.put(Thread.currentThread(), new Slot(System.nanoTime() + budgetNanos));
             lock.notifyAll();
         }
     }
@@ -44,9 +54,8 @@ public final class CallWatchdog implements AutoCloseable {
     public long disarm() {
         long result;
         synchronized (lock) {
-            target = null;
-            result = fired ? firedAt : 0;
-            fired = false;
+            Slot slot = slots.remove(Thread.currentThread());
+            result = slot != null && slot.fired ? slot.firedAt : 0;
         }
         Thread.interrupted();
         return result;
@@ -55,8 +64,9 @@ public final class CallWatchdog implements AutoCloseable {
     /** Called when a guest enters a host import. */
     public void enterHost() {
         synchronized (lock) {
-            if (target == Thread.currentThread()) {
-                inHost = true;
+            Slot slot = slots.get(Thread.currentThread());
+            if (slot != null) {
+                slot.inHost = true;
             }
         }
         // An interrupt delivered just before the guest called in is held back while host code runs.
@@ -67,14 +77,39 @@ public final class CallWatchdog implements AutoCloseable {
     public void exitHost() {
         boolean redeliver;
         synchronized (lock) {
-            if (target != Thread.currentThread()) {
+            Slot slot = slots.get(Thread.currentThread());
+            if (slot == null) {
                 return;
             }
-            inHost = false;
-            redeliver = fired;
+            slot.inHost = false;
+            redeliver = slot.fired;
         }
         if (redeliver) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Stops the current call's budget while a host import waits on another thread, so the guest is
+     * not charged for the wait. {@link #resume()} moves the deadline out by the time spent.
+     */
+    public void suspend() {
+        synchronized (lock) {
+            Slot slot = slots.get(Thread.currentThread());
+            if (slot != null && slot.suspendedAt == 0) {
+                slot.suspendedAt = System.nanoTime();
+            }
+        }
+    }
+
+    public void resume() {
+        synchronized (lock) {
+            Slot slot = slots.get(Thread.currentThread());
+            if (slot != null && slot.suspendedAt != 0) {
+                slot.deadline += System.nanoTime() - slot.suspendedAt;
+                slot.suspendedAt = 0;
+                lock.notifyAll();
+            }
         }
     }
 
@@ -82,19 +117,28 @@ public final class CallWatchdog implements AutoCloseable {
         synchronized (lock) {
             while (!closed) {
                 try {
-                    if (target == null || fired) {
+                    long now = System.nanoTime();
+                    long wait = Long.MAX_VALUE;
+                    for (var e : slots.entrySet()) {
+                        Slot slot = e.getValue();
+                        if (slot.fired || slot.suspendedAt != 0) {
+                            continue;
+                        }
+                        long left = slot.deadline - now;
+                        if (left <= 0) {
+                            slot.fired = true;
+                            slot.firedAt = now;
+                            if (!slot.inHost) {
+                                e.getKey().interrupt();
+                            }
+                        } else {
+                            wait = Math.min(wait, left);
+                        }
+                    }
+                    if (wait == Long.MAX_VALUE) {
                         lock.wait();
-                        continue;
-                    }
-                    long wait = deadline - System.nanoTime();
-                    if (wait > 0) {
+                    } else {
                         lock.wait(wait / 1_000_000, (int) (wait % 1_000_000));
-                        continue;
-                    }
-                    fired = true;
-                    firedAt = System.nanoTime();
-                    if (!inHost) {
-                        target.interrupt();
                     }
                 } catch (InterruptedException e) {
                     return;

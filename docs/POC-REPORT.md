@@ -14,7 +14,7 @@ and both forks keep it under the tag `poc-2026-09-30`. The table below lists the
 | Machine | Apple M4 Pro, 24 GiB, macOS 26.6.2 |
 | Java | 25.0.2 |
 | Minecraft / Fabric | 26.3 (protocol 777), Loader 0.19.5, Fabric API 0.161.0+26.3, Loom 1.18.2, Gradle 9.7.1 |
-| Endive / Endive CM | `main` at b0835978 plus two Redline fixes (shared watchdog, cached memory layouts) / `main` at 4a2c4ed plus one fix (see below), direct record and byte lowering, and a core instance builder hook, submodules in `third_party/` from github.com/Phoenixxo/endive and /endive-cm, installed in `~/.m2-pumpkin-patch` |
+| Endive / Endive CM | `main` at b0835978 plus two Redline fixes (shared watchdog, cached memory layouts) / `main` at 4a2c4ed plus one fix (see below), direct record and byte lowering, a core instance builder hook, and closable stores, submodules in `third_party/` from github.com/Phoenixxo/endive and /endive-cm, installed in `~/.m2-pumpkin-patch` |
 | Pumpkin | `refactor/split-pumpkin-core` (01bdc122b) plus the mux patch, branch `feat/pumpkin-patch-mux` of github.com/Phoenixxo/Pumpkin, submodule `third_party/pumpkin` |
 | Guests | Rust 1.98.0, wit-bindgen 0.62, wasm-tools 1.258.0 |
 
@@ -155,10 +155,21 @@ These need a client window, so they were left for a manual run:
 - Endive and Endive CM are nested as one merged jar. Both publish artifacts named `runtime` and `wasm-tools`, and
   jar-in-jar nests by file name, so including them separately silently drops one of each.
 - The ping key is O. P opens vanilla Social Interactions.
+- The guest interface has one `update(events, frame) -> frame-output` instead of `handle-events` and `render`.
+  The host calls it at most once per tick, only when there are events or the GUI was resized, and draws the
+  last output every frame. In the game every call starts with cold CPU caches, so one call costs about half of
+  two.
+- `entity-snapshot.kind` is a `u32` id, with `view.entity-kind-name` for its registry name, so a snapshot of
+  256 entities carries no strings.
+- Updates can run on worker threads (`PatchConfig.withWorkers`, `-Dpumpkinpatch.workers`). The client thread
+  takes one view snapshot per tick, shared by every instance, and applies each update's draw output, sends,
+  and faults. `measure-text` is measured on the client thread, because the game's font code is not thread safe,
+  and the wait is not charged to the guest's budget. The Fabric mod runs Wasm on workers by default and the
+  Java control on the client thread, as a Java mod would.
 
 ## Incomplete
 
-- The benchmark scenarios and radar sweep above have not been run.
-- The Endive CM fix is not upstreamed. Until it is, `third_party/endive-cm` points at the fork.
+- The Endive CM and Redline fixes are not upstreamed. Until they are, `third_party/` points at the forks.
 - Only the synchronous WIT path exists. There are no blocks, items, or assets, per the brief.
-- Nothing is committed in this repository, the Pumpkin worktree, or Endive CM.
+- The WIT changes since the first release were made in place on `pumpkin:client@0.1.0`. A release would publish
+  them as 0.2 and keep a 0.1 binder.

@@ -16,10 +16,14 @@ import dev.pumpkinmc.patch.core.runtime.Runtime.ComponentRuntime;
 import dev.pumpkinmc.patch.core.session.Session;
 import dev.pumpkinmc.patch.core.session.SessionManager;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /** The facade the platform edge uses. All state hangs off one instance; core has no statics. */
@@ -30,6 +34,7 @@ public final class PumpkinPatch implements AutoCloseable {
     private final Catalog catalog = new Catalog();
     private final Perf perf = new Perf();
     private final CallWatchdog watchdog = new CallWatchdog();
+    private final ExecutorService workers;
     private final Deque<FaultRecord> faults = new ArrayDeque<>();
     private final SessionManager sessions;
 
@@ -37,12 +42,30 @@ public final class PumpkinPatch implements AutoCloseable {
         this.config = config;
         this.runtime = runtime;
         this.ports = ports;
-        var host = new HostServices(config, ports, perf, watchdog, clientThread);
+        this.workers = config.workers() ? newWorkerPool() : null;
+        var host = new HostServices(config, ports, perf, watchdog, clientThread, workers);
         var caller = new GuestCaller(host, this::recordFault);
         this.sessions = new SessionManager(catalog, host, caller);
     }
 
-    /** @param clientThread the only thread that may call guests */
+    /**
+     * Daemon threads for updates, at most one per instance at a time. A few are enough: an update
+     * only waits on its own guest code.
+     */
+    private static ExecutorService newWorkerPool() {
+        int n = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
+        var count = new AtomicInteger();
+        return Executors.newFixedThreadPool(n, task -> {
+            Thread t = new Thread(task, "PumpkinPatch-worker-" + count.incrementAndGet());
+            t.setDaemon(true);
+            return t;
+        });
+    }
+
+    /**
+     * @param clientThread the thread that drives the patch. With {@link PatchConfig#workers()}
+     *     guest updates run on worker threads, and everything else still runs here.
+     */
     public static PumpkinPatch create(PatchConfig config, ComponentRuntime runtime, Ports ports, Thread clientThread) {
         return new PumpkinPatch(config, runtime, ports, clientThread);
     }
@@ -128,6 +151,18 @@ public final class PumpkinPatch implements AutoCloseable {
         sessions.enqueue(new Inbound.WorldChanged(dimension));
     }
 
+    public PatchConfig config() {
+        return config;
+    }
+
+    /**
+     * Waits until no update is running on a worker, applying each one's outcome. For tests and
+     * benchmarks that need an update's result in the same tick. Returns whether all finished.
+     */
+    public boolean awaitUpdates(Duration timeout) {
+        return sessions.awaitUpdates(timeout.toNanos());
+    }
+
     public void tick(long gameTick) {
         long t = System.nanoTime();
         sessions.tick(gameTick);
@@ -163,6 +198,9 @@ public final class PumpkinPatch implements AutoCloseable {
     @Override
     public void close() {
         watchdog.close();
+        if (workers != null) {
+            workers.shutdownNow();
+        }
         runtime.close();
     }
 }

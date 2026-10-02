@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -151,8 +152,12 @@ final class Harness implements AutoCloseable {
         frame();
     }
 
+    /** One tick. With workers, waits for the updates it started, so tests can check their effects. */
     void tick() {
         patch.tick(++tick);
+        if (patch.config().workers() && !patch.awaitUpdates(Duration.ofSeconds(10))) {
+            throw new AssertionError("updates still running after 10 s");
+        }
     }
 
     void frame() {

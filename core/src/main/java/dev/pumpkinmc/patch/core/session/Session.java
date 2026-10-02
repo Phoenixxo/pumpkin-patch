@@ -24,10 +24,17 @@ import dev.pumpkinmc.patch.core.network.MuxCodec;
 import dev.pumpkinmc.patch.core.network.MuxCodec.MalformedFrame;
 import dev.pumpkinmc.patch.core.network.MuxFrame;
 import dev.pumpkinmc.patch.core.runtime.Runtime.InstantiationFailure;
+import dev.pumpkinmc.patch.core.host.GuestCaller.Outcome;
+import dev.pumpkinmc.patch.core.host.ViewSnapshot;
+import dev.pumpkinmc.patch.core.model.Model.EntitySnapshot;
+import dev.pumpkinmc.patch.core.model.Model.PlayerSnapshot;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,12 +61,18 @@ public final class Session {
     private int guiWidth;
     private int guiHeight;
     private long gameTick;
+    /** Updates running on workers. At most one per instance. */
+    private final Map<ComponentInstance, PendingUpdate> pending = new IdentityHashMap<>();
+
+    /** An update on a worker, with what is needed to apply its outcome. */
+    private record PendingUpdate(CompletableFuture<Outcome<FrameOutput>> outcome, List<Event> batch, FrameInfo frame) {}
 
     Session(long id, Kind kind, HostServices host, GuestCaller caller) {
         this.id = id;
         this.kind = kind;
         this.host = host;
         this.caller = caller;
+        host.textWidths().clear();
     }
 
     public long id() {
@@ -134,10 +147,14 @@ public final class Session {
      */
     void tick(long gameTick) {
         this.gameTick = gameTick;
+        host.runClientTasks();
+        collectFinished();
         inbound.drain(this::route);
         var frame = new FrameInfo(guiWidth, guiHeight, gameTick);
+        ViewSnapshot view = null;
         for (ComponentInstance instance : instances) {
-            if (instance.state() != State.ACTIVE) {
+            // An instance still running last tick's update keeps its events for the next one.
+            if (instance.state() != State.ACTIVE || pending.containsKey(instance)) {
                 continue;
             }
             instance.resetTickQuotas();
@@ -153,22 +170,91 @@ public final class Session {
                 continue;
             }
             instance.setUpdateDue(false);
-            var output = caller.call(instance, CallPhase.UPDATE, "update",
-                    host.config.limits().callBudgetNanos(), g -> g.update(batch, frame));
-            if (output.isPresent()) {
-                for (Event e : batch) {
-                    if (e instanceof Event.NetMessage) {
-                        host.perf.record("net.delivered-to-guest", System.nanoTime() - pendingDeliveryStart);
-                    }
-                }
-                applyOutbox(instance);
-                if (instance.granted(Capability.HUD)) {
-                    applyFrameOutput(instance, output.get(), frame);
-                }
+            long budget = host.config.limits().callBudgetNanos();
+            if (host.workers() == null) {
+                completeUpdate(instance, caller.call(instance, CallPhase.UPDATE, "update", budget,
+                        g -> g.update(batch, frame)), batch, frame);
             } else {
-                sendClose(instance, "component faulted");
+                if (view == null) {
+                    view = takeSnapshot();
+                }
+                pending.put(instance, new PendingUpdate(caller.submit(instance, CallPhase.UPDATE, "update", budget,
+                        view, g -> g.update(batch, frame)), batch, frame));
             }
         }
+    }
+
+    private void completeUpdate(ComponentInstance instance, Optional<FrameOutput> output, List<Event> batch,
+            FrameInfo frame) {
+        if (output.isPresent()) {
+            for (Event e : batch) {
+                if (e instanceof Event.NetMessage) {
+                    host.perf.record("net.delivered-to-guest", System.nanoTime() - pendingDeliveryStart);
+                }
+            }
+            applyOutbox(instance);
+            if (instance.granted(Capability.HUD)) {
+                applyFrameOutput(instance, output.get(), frame);
+            }
+        } else {
+            sendClose(instance, "component faulted");
+        }
+    }
+
+    /** Applies the outcome of every update a worker has finished. */
+    private void collectFinished() {
+        if (pending.isEmpty()) {
+            return;
+        }
+        var it = pending.entrySet().iterator();
+        while (it.hasNext()) {
+            var e = it.next();
+            ComponentInstance instance = e.getKey();
+            PendingUpdate p = e.getValue();
+            if (p.outcome().isDone()) {
+                // An IdentityHashMap entry is unusable once removed, so it is read first.
+                it.remove();
+                completeUpdate(instance, caller.finish(p.outcome().join()), p.batch(), p.frame());
+            }
+        }
+    }
+
+    /**
+     * Waits for the updates on workers, serving the client-thread work they ask for meanwhile, and
+     * applies them. Returns whether none is left running.
+     */
+    boolean awaitUpdates(long timeoutNanos) {
+        long deadline = System.nanoTime() + timeoutNanos;
+        while (!pending.isEmpty()) {
+            host.runClientTasks();
+            collectFinished();
+            if (pending.isEmpty() || System.nanoTime() - deadline > 0) {
+                break;
+            }
+            Thread.onSpinWait();
+        }
+        return pending.isEmpty();
+    }
+
+    /**
+     * What the view imports read on a worker this tick. Taken on the client thread, once, for every
+     * instance updated this tick. Entities are only collected when some instance may read them.
+     */
+    private ViewSnapshot takeSnapshot() {
+        long t = System.nanoTime();
+        var view = host.ports.playerView();
+        PlayerSnapshot player = view.localPlayer(host.worldEpoch()).orElse(null);
+        String dimension = view.dimension().orElse(null);
+        double radius = host.snapshotRadius();
+        boolean wanted = false;
+        for (ComponentInstance i : instances) {
+            wanted |= i.state() == State.ACTIVE && i.granted(Capability.VIEW);
+        }
+        List<EntitySnapshot> entities = wanted && player != null
+                ? List.copyOf(view.entitiesNear(radius, host.config.maxNearbyEntities()))
+                : List.of();
+        host.perf.record("host.view.snapshot", System.nanoTime() - t);
+        return new ViewSnapshot(player, dimension, entities, radius);
     }
 
     private long pendingDeliveryStart;
@@ -291,6 +377,8 @@ public final class Session {
      * GUI makes the next tick update every HUD instance, so its layout follows.
      */
     void renderHud(FrameInfo frame) {
+        host.runClientTasks();
+        collectFinished();
         if (frame.guiWidth() != guiWidth || frame.guiHeight() != guiHeight) {
             guiWidth = frame.guiWidth();
             guiHeight = frame.guiHeight();
@@ -344,6 +432,10 @@ public final class Session {
         }
         closed = true;
         inbound.clear();
+        // The budget bounds each update, and a worker waiting on the client thread is served here.
+        if (!awaitUpdates(2 * host.config.limits().callBudgetNanos() + 2_000_000_000L)) {
+            LOG.warn("[PumpkinPatch] session {} closed with updates still running", id);
+        }
         if (gameRunning) {
             for (ComponentInstance i : instances) {
                 if (i.state() == State.ACTIVE) {

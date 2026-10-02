@@ -14,8 +14,13 @@ import dev.pumpkinmc.patch.core.runtime.Runtime.HudImports;
 import dev.pumpkinmc.patch.core.runtime.Runtime.LogImports;
 import dev.pumpkinmc.patch.core.runtime.Runtime.NetImports;
 import dev.pumpkinmc.patch.core.runtime.Runtime.ViewImports;
+import dev.pumpkinmc.patch.core.host.HostServices.CallContext;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,15 +59,24 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
         return this;
     }
 
-    /** Thread and re-entry check, and the watchdog's host-code window. */
+    /** Re-entry check, and the watchdog's host-code window. */
     private long enter() {
-        host.checkThread();
-        if (host.executing != instance) {
+        CallContext call = host.context();
+        if (call == null || call.instance() != instance) {
             throw new IllegalStateException("HOST_REENTRY: " + instance.id() + " called an import while "
-                    + (host.executing == null ? "no instance" : host.executing.id()) + " was executing");
+                    + (call == null ? "no instance" : call.instance().id()) + " was executing");
         }
         host.watchdog.enterHost();
         return System.nanoTime();
+    }
+
+    private CallPhase phase() {
+        return host.context().phase();
+    }
+
+    /** The snapshot a worker call reads, or {@code null} when the game can be read directly. */
+    private ViewSnapshot snapshot() {
+        return host.context().view();
     }
 
     private void exit(long start, String name) {
@@ -97,7 +111,7 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
     public void send(String channel, byte[] payload) throws HostError {
         long t = enter();
         try {
-            if (host.phase != CallPhase.UPDATE && host.phase != CallPhase.SHUTDOWN) {
+            if (phase() != CallPhase.UPDATE && phase() != CallPhase.SHUTDOWN) {
                 throw HostError.of(Code.UNAVAILABLE);
             }
             if (!instance.granted(Capability.NET)) {
@@ -141,7 +155,7 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
     }
 
     private void checkView() throws HostError {
-        if (host.phase == CallPhase.SHUTDOWN) {
+        if (phase() == CallPhase.SHUTDOWN) {
             throw HostError.of(Code.UNAVAILABLE);
         }
         if (!instance.granted(Capability.VIEW)) {
@@ -154,6 +168,13 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
         long t = enter();
         try {
             checkView();
+            ViewSnapshot view = snapshot();
+            if (view != null) {
+                if (view.player() == null) {
+                    throw HostError.of(Code.UNAVAILABLE);
+                }
+                return view.player();
+            }
             return host.ports.playerView().localPlayer(host.worldEpoch())
                     .orElseThrow(() -> HostError.of(Code.UNAVAILABLE));
         } finally {
@@ -166,6 +187,14 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
         long t = enter();
         try {
             checkView();
+            ViewSnapshot view = snapshot();
+            if (view != null) {
+                if (view.dimension() == null) {
+                    throw HostError.of(Code.UNAVAILABLE);
+                }
+                return new WorldRef(view.dimension(), view.player() != null
+                        ? view.player().world().epoch() : host.worldEpoch());
+            }
             return host.ports.playerView().dimension()
                     .map(d -> new WorldRef(d, host.worldEpoch()))
                     .orElseThrow(() -> HostError.of(Code.UNAVAILABLE));
@@ -183,7 +212,11 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
                 throw new HostError(Code.INVALID_ARGUMENT, "radius must be within 0..256");
             }
             int clamped = Math.max(0, Math.min(max, host.config.maxNearbyEntities()));
-            List<EntitySnapshot> found = host.ports.playerView().entitiesNear(radius, clamped);
+            host.requestRadius(radius);
+            ViewSnapshot view = snapshot();
+            List<EntitySnapshot> found = view != null
+                    ? view.nearby(radius, clamped)
+                    : host.ports.playerView().entitiesNear(radius, clamped);
             host.perf.value("count.nearby-entities/" + instance.id(), found.size());
             return found;
         } finally {
@@ -191,11 +224,57 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
         }
     }
 
+    /** How long a worker waits for the client thread to measure text before giving up. */
+    private static final long MEASURE_WAIT_MILLIS = 1_000;
+
+    /**
+     * Text widths for a worker. The game's font code is not thread safe, so widths missing from the
+     * cache are measured on the client thread at its next tick or frame. The wait is not charged to
+     * the guest's call budget.
+     */
+    private List<Integer> measureOnClientThread(List<String> texts) throws HostError {
+        var cache = host.textWidths();
+        List<String> missing = new ArrayList<>();
+        for (String s : texts) {
+            if (!cache.containsKey(s)) {
+                missing.add(s);
+            }
+        }
+        if (!missing.isEmpty()) {
+            var done = new CompletableFuture<Void>();
+            host.onClientThread(() -> {
+                for (String s : missing) {
+                    cache.put(s, host.ports.hudCanvas().measureText(s));
+                }
+                done.complete(null);
+            });
+            host.watchdog.suspend();
+            long waited = System.nanoTime();
+            try {
+                done.get(MEASURE_WAIT_MILLIS, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException | ExecutionException e) {
+                throw HostError.of(Code.UNAVAILABLE);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw HostError.of(Code.UNAVAILABLE);
+            } finally {
+                host.watchdog.resume();
+                host.perf.record("host.hud.measure-text.client-wait", System.nanoTime() - waited);
+            }
+        }
+        List<Integer> out = new ArrayList<>(texts.size());
+        for (String s : texts) {
+            Integer width = cache.get(s);
+            out.add(width != null ? width : 0);
+        }
+        return out;
+    }
+
     @Override
     public List<Integer> measureText(List<String> texts) throws HostError {
         long t = enter();
         try {
-            if (host.phase != CallPhase.UPDATE) {
+            if (phase() != CallPhase.UPDATE) {
                 throw HostError.of(Code.UNAVAILABLE);
             }
             if (!instance.granted(Capability.HUD)) {
@@ -204,11 +283,14 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
             if (texts.size() > host.config.maxDrawCommands()) {
                 throw new HostError(Code.LIMIT_EXCEEDED, "at most " + host.config.maxDrawCommands() + " texts");
             }
-            List<Integer> out = new ArrayList<>(texts.size());
-            for (String s : texts) {
-                out.add(host.ports.hudCanvas().measureText(s));
+            if (host.onClientThread()) {
+                List<Integer> out = new ArrayList<>(texts.size());
+                for (String s : texts) {
+                    out.add(host.ports.hudCanvas().measureText(s));
+                }
+                return out;
             }
-            return out;
+            return measureOnClientThread(texts);
         } finally {
             exit(t, "hud.measure-text");
         }

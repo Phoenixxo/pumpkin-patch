@@ -111,6 +111,18 @@ def guest_per_tick(perf, ticks, mod=None):
     return total / ticks if ticks else 0
 
 
+def game_thread_per_tick(perf, ticks):
+    """Microseconds the client thread spent in the host per client tick: tick and frame handling.
+    With workers this excludes the guest calls, which run elsewhere."""
+    t = perf["timings_us"]
+    total = sum((t.get(k) or {"sum": 0})["sum"] for k in ("drain.tick", "drain.hud"))
+    return total / ticks if ticks else 0
+
+
+def mode(d):
+    return "workers" if d["environment"].get("workers") else "client thread"
+
+
 def alloc_per_tick(perf, ticks, mod=None):
     total = sum(v["sum"] for k, v in perf["values"].items()
                 if k.startswith("alloc-bytes.") and (mod is None or k.endswith("/" + mod)))
@@ -125,10 +137,12 @@ def kib(b):
     return f"{b / 1024:.1f}"
 
 
-pairs = [("one", "one-java"), ("several", "several-java"), ("several-interpreter", "several-java"),
-         ("calls", "calls-java"), ("rtt", "rtt-java"),
-         ("one-redline", "one-java"), ("several-redline", "several-java"),
-         ("calls-redline", "calls-java"), ("rtt-redline", "rtt-java")]
+base_pairs = [("one", "one-java"), ("several", "several-java"), ("several-interpreter", "several-java"),
+              ("calls", "calls-java"), ("rtt", "rtt-java"),
+              ("one-redline", "one-java"), ("several-redline", "several-java"),
+              ("calls-redline", "calls-java"), ("rtt-redline", "rtt-java")]
+# Each Wasm scenario may also have run with updates on the client thread, as "<scenario>-client".
+pairs = [p for w, j in base_pairs for p in ((w, j), (w + "-client", j))]
 rows = []
 for wasm, java in pairs:
     w = load(os.path.join(root, f"bench-{wasm}.json"))
@@ -140,30 +154,37 @@ for wasm, java in pairs:
         host = d["perf"]["host"]
         ticks = (host["timings_us"].get("client.tick") or {"n": 0})["n"]
         cells.append((guest_per_tick(host, ticks), alloc_per_tick(host, ticks), host["timings_us"].get("client.tick"),
-                      host["timings_us"].get("client.frame")))
-    (wg, wa, wt, wf), (jg, ja, jt, jf) = cells
-    rows.append(row([wasm, w["environment"]["engine"],
-                     f"{wg:.1f}", f"{jg:.1f}", ratio(wg, jg), f"{kib(wa)} / {kib(ja)}",
-                     f"{pct(wt)} / {pct(jt)}", f"{pct(wf, 'p95')} / {pct(jf, 'p95')}"]))
+                      host["timings_us"].get("client.frame"), game_thread_per_tick(host, ticks)))
+    (wg, wa, wt, wf, wgt), (jg, ja, jt, jf, jgt) = cells
+    rows.append(row([wasm, w["environment"]["engine"], mode(w),
+                     f"{wg:.1f}", f"{jg:.1f}", ratio(wg, jg), f"{wgt:.1f} / {jgt:.1f}", ratio(wgt, jgt),
+                     f"{kib(wa)} / {kib(ja)}", f"{pct(wt)} / {pct(jt)}", f"{pct(wf, 'p95')} / {pct(jf, 'p95')}"]))
 if rows:
     out.append("## Wasm against the Java control\n")
     out.append("Same samples, same host and timers; only the guest code differs. Guest time is every guest call "
-               "summed per client tick.\n")
-    out.append(row(["scenario", "Wasm engine", "Wasm guest us/tick", "Java guest us/tick", "Wasm / Java",
+               "summed per client tick. Game-thread time is what the client thread spent in the host per tick, "
+               "which with workers leaves the guest calls out. The Java control runs on the client thread, as a "
+               "Java mod would.\n")
+    out.append(row(["scenario", "Wasm engine", "Wasm updates on", "Wasm guest us/tick", "Java guest us/tick",
+                    "guest Wasm / Java", "game thread us/tick Wasm / Java", "game thread Wasm / Java",
                     "alloc KiB/tick Wasm / Java", "client tick p50 Wasm / Java", "frame p95 Wasm / Java"]))
-    out.append(row(["---"] * 8))
+    out.append(row(["---"] * 11))
     out.extend(rows)
     out.append("")
 
-radar = {e: load(os.path.join(root, f"radar-{e}.json")) for e in ("compiler", "redline", "interpreter", "java")}
-if radar["java"] and (radar["compiler"] or radar["redline"] or radar["interpreter"]):
+radar_engines = ("compiler", "compiler-client", "redline", "redline-client", "interpreter")
+radar = {e: load(os.path.join(root, f"radar-{e}.json")) for e in radar_engines + ("java",)}
+if radar["java"] and any(radar[e] for e in radar_engines):
     m = "example:radar"
-    engines = [e for e in ("compiler", "redline", "interpreter") if radar[e]]
+    engines = [e for e in radar_engines if radar[e]]
     out.append("## example:radar against the Java control\n")
+    out.append("A \"-client\" engine ran its updates on the client thread. The others ran them on workers, so "
+               "their game-thread time leaves the radar's own work out.\n")
     header = ["phase", "Java us/tick"]
     for e in engines:
         header += [f"{e} us/tick", f"{e} / Java"]
-    header += ["alloc per call p50 KiB: Java / " + " / ".join(engines),
+    header += ["game thread us/tick: Java / " + " / ".join(engines),
+               "alloc per call p50 KiB: Java / " + " / ".join(engines),
                "frame p95: Java / " + " / ".join(engines)]
     out.append(row(header))
     out.append(row(["---"] * len(header)))
@@ -178,13 +199,14 @@ if radar["java"] and (radar["compiler"] or radar["redline"] or radar["interprete
             ticks = (t.get("client.tick") or {"n": 0})["n"]
             alloc = first(p["perf"]["values"], f"alloc-bytes.update/{m}", f"alloc-bytes.handle-events/{m}")
             cells[e] = (guest_per_tick(p["perf"], ticks, m), alloc["p50"] if alloc and alloc["n"] else 0,
-                        t.get("client.frame"))
-        jg, ja, jf = cells["java"]
+                        t.get("client.frame"), game_thread_per_tick(p["perf"], ticks))
+        jg, ja, jf, jgt = cells["java"]
         line = [phase, f"{jg:.1f}"]
         for e in engines:
-            g = cells.get(e, (0, 0, None))[0]
+            g = cells.get(e, (0, 0, None, 0))[0]
             line += [f"{g:.1f}", ratio(g, jg)]
-        line += [" / ".join(kib(cells[e][1]) if e in cells else "-" for e in ["java"] + engines),
+        line += [" / ".join(f"{cells[e][3]:.1f}" if e in cells else "-" for e in ["java"] + engines),
+                 " / ".join(kib(cells[e][1]) if e in cells else "-" for e in ["java"] + engines),
                  " / ".join(pct(cells[e][2], "p95") if e in cells else "-" for e in ["java"] + engines)]
         out.append(row(line))
     out.append("")

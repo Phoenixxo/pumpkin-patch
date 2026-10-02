@@ -14,7 +14,11 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
-/** One component instantiated for one session. Confined to the client thread. */
+/**
+ * One component instantiated for one session. Confined to the client thread, except that during an
+ * update on a worker, that worker runs the guest and fills the outbox and quota counters. The
+ * session starts no other update and reads none of them until the worker's update has finished.
+ */
 public final class ComponentInstance {
 
     public enum State {

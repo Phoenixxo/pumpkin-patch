@@ -28,15 +28,16 @@ import org.junit.jupiter.params.provider.ValueSource;
 class RadarTest {
     static final List<String> CHANNELS = List.of("sync", "wp-add", "wp-clear", "bench", "waypoints", "players", "notice");
 
-    /** The three Endive engines, and the Java port as the control. */
+    /** The three Endive engines, and the Java port as the control. A "-workers" suffix runs updates on workers. */
     static ComponentRuntime runtime(String engine) {
-        return engine.equals("java")
+        String name = engine.replace("-workers", "");
+        return name.equals("java")
                 ? new JavaComponentRuntime()
-                : new EndiveComponentRuntime(Engine.valueOf(engine.toUpperCase(Locale.ROOT)), true);
+                : new EndiveComponentRuntime(Engine.valueOf(name.toUpperCase(Locale.ROOT)), true);
     }
 
     static Harness radar(String engine) throws Exception {
-        var h = new Harness(runtime(engine), PatchConfig.defaults());
+        var h = new Harness(runtime(engine), PatchConfig.defaults().withWorkers(engine.endsWith("-workers")));
         h.install("example:radar", "radar", "always", "\"view\", \"hud\", \"input\"", "\"net\"", """
                 [client.net]
                 protocol = "radar/1"
@@ -89,7 +90,7 @@ class RadarTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"interpreter", "compiler", "redline", "java"})
+    @ValueSource(strings = {"interpreter", "compiler", "redline", "java", "compiler-workers", "redline-workers"})
     void radarDrawsEntitiesAndServerWaypoints(String engine) throws Exception {
         try (var h = radar(engine)) {
             ComponentInstance radar = h.patch.instances().getFirst();

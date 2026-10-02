@@ -27,14 +27,15 @@ final class BenchJson {
         var rt = Runtime.getRuntime();
         return String.format(Locale.ROOT,
                 "{\"os\":%s,\"arch\":%s,\"cpus\":%d,\"java\":%s,\"jvm\":%s,\"max_heap_mib\":%d,"
-                        + "\"minecraft\":%s,\"fabric_loader\":%s,\"fabric_api\":%s,\"engine\":%s,"
+                        + "\"minecraft\":%s,\"fabric_loader\":%s,\"fabric_api\":%s,\"engine\":%s,\"workers\":%b,"
                         + "\"warmup_s\":%d,\"measure_s\":%d,\"fps_limit\":%d,\"vsync\":%b,\"window\":\"%dx%d\","
                         + "\"gui_scale\":%d,\"render_distance\":%d}",
                 str(System.getProperty("os.name") + " " + System.getProperty("os.version")),
                 str(System.getProperty("os.arch")), rt.availableProcessors(), str(System.getProperty("java.version")),
                 str(System.getProperty("java.vm.name")), rt.maxMemory() >> 20, str(version("minecraft")),
                 str(version("fabricloader")), str(version("fabric-api")),
-                str(patch == null ? "none (host not installed)" : patch.runtime().describe()), warmupSeconds,
+                str(patch == null ? "none (host not installed)" : patch.runtime().describe()),
+                patch != null && patch.config().workers(), warmupSeconds,
                 measureSeconds, mc.options.framerateLimit().get(), mc.options.enableVsync().get(),
                 mc.getWindow().getWidth(), mc.getWindow().getHeight(), mc.options.guiScale().get(),
                 mc.options.renderDistance().get());

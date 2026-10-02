@@ -213,7 +213,8 @@ public final class Autopilot {
         control(2, 0);
         control(1, 0);
         step(mc -> {
-            String engine = System.getProperty("pumpkinpatch.engine", "compiler");
+            String engine = System.getProperty("pumpkinpatch.radar.label",
+                    System.getProperty("pumpkinpatch.engine", "compiler"));
             String json = "{\"scenario\":\"radar\",\"environment\":"
                     + BenchJson.environment(mc, patch, settleSeconds, seconds) + ",\"catalog\":" + catalogJson()
                     + ",\"faults\":" + patch.faults().size() + ",\"phases\":[" + String.join(",", phases) + "]}";

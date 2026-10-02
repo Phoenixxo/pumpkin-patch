@@ -151,6 +151,12 @@ public final class SessionManager {
         }
     }
 
+    /** See {@link Session#awaitUpdates}. */
+    public boolean awaitUpdates(long timeoutNanos) {
+        host.checkThread();
+        return session == null || session.awaitUpdates(timeoutNanos);
+    }
+
     /** Benchmark harness only. See {@link Session#sendAsMod}. */
     public boolean sendAsMod(String modId, String channel, byte[] payload) {
         host.checkThread();

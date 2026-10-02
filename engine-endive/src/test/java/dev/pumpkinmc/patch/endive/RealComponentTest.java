@@ -75,7 +75,19 @@ class RealComponentTest {
     @ParameterizedTest
     @EnumSource(Engine.class)
     void pingRoundTripTrapIsolationAndFreshSessions(Engine engine) throws Exception {
-        try (var h = demo(engine, PatchConfig.defaults())) {
+        pingRoundTripTrapIsolationAndFreshSessions(engine, PatchConfig.defaults());
+    }
+
+    /** The same, with every update on a worker thread against a view snapshot. */
+    @ParameterizedTest
+    @EnumSource(Engine.class)
+    void pingRoundTripTrapIsolationAndFreshSessionsOnWorkers(Engine engine) throws Exception {
+        pingRoundTripTrapIsolationAndFreshSessions(engine, PatchConfig.defaults().withWorkers(true));
+    }
+
+    private static void pingRoundTripTrapIsolationAndFreshSessions(Engine engine, PatchConfig config)
+            throws Exception {
+        try (var h = demo(engine, config)) {
             for (CatalogEntry e : h.patch.catalog().entries()) {
                 assertEquals(CatalogEntry.Status.COMPILED, e.status(), e.id() + " " + e.reason());
             }
@@ -129,7 +141,19 @@ class RealComponentTest {
     @ParameterizedTest
     @EnumSource(Engine.class)
     void loopingGuestIsStoppedAndTheThreadStaysUsable(Engine engine) throws Exception {
-        var config = PatchConfig.defaults().withLimits(new RuntimeLimits(25_000_000L, 2_000_000_000L, 256L << 20));
+        loopingGuestIsStopped(engine, false);
+    }
+
+    /** The loop runs on a worker, so the worker is interrupted and the client thread never is. */
+    @ParameterizedTest
+    @EnumSource(Engine.class)
+    void loopingGuestOnAWorkerIsStopped(Engine engine) throws Exception {
+        loopingGuestIsStopped(engine, true);
+    }
+
+    private static void loopingGuestIsStopped(Engine engine, boolean workers) throws Exception {
+        var config = PatchConfig.defaults().withLimits(new RuntimeLimits(25_000_000L, 2_000_000_000L, 256L << 20))
+                .withWorkers(workers);
         try (var h = demo(engine, config)) {
             h.joinPumpkin(PING);
             h.patch.enqueueAction("example:spin", "spin", true);
@@ -153,7 +177,7 @@ class RealComponentTest {
             h.tick();
             assertEquals(1, ((MuxFrame.Data) MuxCodec.decode(h.sent.removeLast())).route());
             assertEquals(State.ACTIVE, instance(h, "example:trap").state());
-            System.out.printf("[%s] spin stopped in %d ms; %s%n", engine, elapsedMs,
+            System.out.printf("[%s%s] spin stopped in %d ms; %s%n", engine, workers ? ", workers" : "", elapsedMs,
                     h.patch.perf().summarize().get("watchdog.stop-latency"));
         }
     }
