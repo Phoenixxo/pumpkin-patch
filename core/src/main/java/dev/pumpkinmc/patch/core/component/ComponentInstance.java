@@ -43,7 +43,7 @@ public final class ComponentInstance {
     private int route = -1;
     private List<String> channels = List.of();
     private List<DrawCommand> renderCache = List.of();
-    private boolean renderDue;
+    private boolean updateDue;
     private FaultRecord fault;
 
     // Per-tick quota counters.
@@ -150,12 +150,13 @@ public final class ComponentInstance {
         renderCache = c;
     }
 
-    public boolean renderDue() {
-        return renderDue;
+    /** Whether the next tick updates this instance even without events. */
+    public boolean updateDue() {
+        return updateDue;
     }
 
-    public void setRenderDue(boolean due) {
-        renderDue = due;
+    public void setUpdateDue(boolean due) {
+        updateDue = due;
     }
 
     public FaultRecord fault() {

@@ -45,8 +45,7 @@ public final class HostServices {
 
     public enum CallPhase {
         INIT,
-        EVENTS,
-        RENDER,
+        UPDATE,
         SHUTDOWN
     }
 }

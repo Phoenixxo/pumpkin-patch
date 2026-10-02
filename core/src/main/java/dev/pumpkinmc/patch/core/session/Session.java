@@ -50,6 +50,10 @@ public final class Session {
     private final Map<Integer, Long> lastSend = new HashMap<>();
     private long malformedFrames;
     private boolean closed;
+    /** The GUI size of the last frame drawn, which every update is given. */
+    private int guiWidth;
+    private int guiHeight;
+    private long gameTick;
 
     Session(long id, Kind kind, HostServices host, GuestCaller caller) {
         this.id = id;
@@ -113,6 +117,7 @@ public final class Session {
                     .ifPresent(result -> {
                         instance.activate(result.subscriptions());
                         instance.enqueue(new Event.SessionStarted(info));
+                        instance.setUpdateDue(true);
                         LOG.info("[PumpkinPatch] {} ACTIVE (session {}, route {}, subscriptions {})",
                                 entry.id(), id, instance.route(), result.subscriptions());
                     });
@@ -123,9 +128,14 @@ public final class Session {
         }
     }
 
-    /** The tick drain point. */
+    /**
+     * The tick drain point. Each instance gets one {@code update} with its pending events and the
+     * GUI size of the last frame, and none when it has no events and no update is due.
+     */
     void tick(long gameTick) {
+        this.gameTick = gameTick;
         inbound.drain(this::route);
+        var frame = new FrameInfo(guiWidth, guiHeight, gameTick);
         for (ComponentInstance instance : instances) {
             if (instance.state() != State.ACTIVE) {
                 continue;
@@ -139,28 +149,24 @@ public final class Session {
             if (instance.subscriptions().contains(EventKind.TICK) && instance.queue().isEmpty()) {
                 batch.add(new Event.Tick(gameTick));
             }
-            if (batch.isEmpty()) {
+            if (batch.isEmpty() && !instance.updateDue()) {
                 continue;
             }
-            var delivered = caller.call(instance, CallPhase.EVENTS, "handle-events",
-                    host.config.limits().callBudgetNanos(), g -> {
-                        g.handleEvents(batch);
-                        return Boolean.TRUE;
-                    });
-            if (delivered.isPresent()) {
+            instance.setUpdateDue(false);
+            var output = caller.call(instance, CallPhase.UPDATE, "update",
+                    host.config.limits().callBudgetNanos(), g -> g.update(batch, frame));
+            if (output.isPresent()) {
                 for (Event e : batch) {
                     if (e instanceof Event.NetMessage) {
                         host.perf.record("net.delivered-to-guest", System.nanoTime() - pendingDeliveryStart);
                     }
                 }
                 applyOutbox(instance);
+                if (instance.granted(Capability.HUD)) {
+                    applyFrameOutput(instance, output.get(), frame);
+                }
             } else {
                 sendClose(instance, "component faulted");
-            }
-        }
-        for (ComponentInstance instance : instances) {
-            if (instance.state() == State.ACTIVE && instance.granted(Capability.HUD)) {
-                instance.setRenderDue(true);
             }
         }
     }
@@ -266,29 +272,33 @@ public final class Session {
         }
     }
 
-    /** The HUD drain point. Calls render at most once per tick, and draws the caches every frame. */
-    void renderHud(FrameInfo frame) {
-        for (ComponentInstance instance : instances) {
-            if (instance.state() != State.ACTIVE || !instance.renderDue() || !instance.granted(Capability.HUD)) {
-                continue;
+    private void applyFrameOutput(ComponentInstance instance, FrameOutput out, FrameInfo frame) {
+        switch (out) {
+            case FrameOutput.Unchanged u -> {}
+            case FrameOutput.Clear c -> instance.setRenderCache(List.of());
+            case FrameOutput.Commands c -> {
+                host.perf.value("count.draw-commands/" + instance.id(), c.commands().size());
+                if (c.commands().size() > host.config.maxDrawCommands()) {
+                    instance.drawCommandsTruncated += c.commands().size() - host.config.maxDrawCommands();
+                }
+                instance.setRenderCache(sanitize(c.commands(), frame));
             }
-            instance.setRenderDue(false);
-            caller.call(instance, CallPhase.RENDER, "render", host.config.limits().callBudgetNanos(),
-                            g -> g.render(frame))
-                    .ifPresent(out -> {
-                        switch (out) {
-                            case FrameOutput.Unchanged u -> {}
-                            case FrameOutput.Clear c -> instance.setRenderCache(List.of());
-                            case FrameOutput.Commands c -> {
-                                host.perf.value("count.draw-commands/" + instance.id(), c.commands().size());
-                                if (c.commands().size() > host.config.maxDrawCommands()) {
-                                    instance.drawCommandsTruncated +=
-                                            c.commands().size() - host.config.maxDrawCommands();
-                                }
-                                instance.setRenderCache(sanitize(c.commands(), frame));
-                            }
-                        }
-                    });
+        }
+    }
+
+    /**
+     * The HUD drain point. Makes no guest calls: it draws each instance's last output. A resized
+     * GUI makes the next tick update every HUD instance, so its layout follows.
+     */
+    void renderHud(FrameInfo frame) {
+        if (frame.guiWidth() != guiWidth || frame.guiHeight() != guiHeight) {
+            guiWidth = frame.guiWidth();
+            guiHeight = frame.guiHeight();
+            for (ComponentInstance instance : instances) {
+                if (instance.state() == State.ACTIVE && instance.granted(Capability.HUD)) {
+                    instance.setUpdateDue(true);
+                }
+            }
         }
         for (ComponentInstance instance : instances) {
             if (instance.state() == State.ACTIVE && !instance.renderCache().isEmpty()) {
@@ -337,10 +347,9 @@ public final class Session {
         if (gameRunning) {
             for (ComponentInstance i : instances) {
                 if (i.state() == State.ACTIVE) {
-                    caller.call(i, CallPhase.EVENTS, "handle-events", host.config.limits().callBudgetNanos(), g -> {
-                        g.handleEvents(List.of(new Event.SessionEnding()));
-                        return Boolean.TRUE;
-                    });
+                    var frame = new FrameInfo(guiWidth, guiHeight, gameTick);
+                    caller.call(i, CallPhase.UPDATE, "update", host.config.limits().callBudgetNanos(),
+                            g -> g.update(List.of(new Event.SessionEnding()), frame));
                 }
             }
         }

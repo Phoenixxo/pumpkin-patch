@@ -39,6 +39,15 @@ impl Guest for Ping {
         Ok(InitResult { subscriptions: EventKinds::INPUT })
     }
 
+    fn update(events: Vec<Event>, frame: FrameInfo) -> FrameOutput {
+        Self::handle_events(events);
+        Self::render(frame)
+    }
+
+    fn shutdown() {}
+}
+
+impl Ping {
     fn handle_events(events: Vec<Event>) {
         STATE.with_borrow_mut(|s| {
             for event in events {
@@ -101,8 +110,6 @@ impl Guest for Ping {
             FrameOutput::Commands(commands)
         })
     }
-
-    fn shutdown() {}
 }
 
 export!(Ping);

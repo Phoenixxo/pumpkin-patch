@@ -72,9 +72,8 @@ public final class Runtime {
     public interface ComponentGuest {
         InitResult init(InitInfo info) throws GuestTrap, GuestInitError;
 
-        void handleEvents(List<Event> batch) throws GuestTrap;
-
-        FrameOutput render(FrameInfo frame) throws GuestTrap;
+        /** Delivers {@code events}, then returns the HUD for {@code frame}. */
+        FrameOutput update(List<Event> events, FrameInfo frame) throws GuestTrap;
 
         void shutdown() throws GuestTrap;
     }

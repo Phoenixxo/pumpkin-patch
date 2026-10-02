@@ -13,6 +13,15 @@ impl Guest for Spin {
         Ok(InitResult { subscriptions: EventKinds::INPUT })
     }
 
+    fn update(events: Vec<Event>, frame: FrameInfo) -> FrameOutput {
+        Self::handle_events(events);
+        Self::render(frame)
+    }
+
+    fn shutdown() {}
+}
+
+impl Spin {
     fn handle_events(events: Vec<Event>) {
         for event in events {
             if let Event::Action(a) = event
@@ -31,8 +40,6 @@ impl Guest for Spin {
     fn render(_: FrameInfo) -> FrameOutput {
         FrameOutput::Unchanged
     }
-
-    fn shutdown() {}
 }
 
 export!(Spin);

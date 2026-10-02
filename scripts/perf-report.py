@@ -32,6 +32,11 @@ def per_tick_guest_us(perf, mod, frames_or_ticks):
     return total / frames_or_ticks if frames_or_ticks else 0
 
 
+def first(d, *keys):
+    """The first of keys present in d. Runs before update replaced handle-events use the old names."""
+    return next((d[k] for k in keys if d.get(k)), None)
+
+
 out = []
 env_printed = False
 
@@ -63,8 +68,8 @@ for f in sorted(glob.glob(os.path.join(root, "radar-*.json"))):
     out.append(f"## example:radar sweep ({d['environment']['engine']})\n")
     out.append("Compile (cold, per launch): " + ", ".join(
         f"{c['id']} {c['compile_ms']:.0f} ms ({c['bytes'] // 1024} KiB)" for c in d["catalog"]) + "\n")
-    out.append(row(["phase", "entities seen", "draw cmds", "frame p50 / p95 / p99", "handle-events p50 / p99 / max",
-                    "render p50 / p99 / max", "convert (events / render) p50", "guest us per tick",
+    out.append(row(["phase", "entities seen", "draw cmds", "frame p50 / p95 / p99", "update p50 / p99 / max",
+                    "render p50 / p99 / max (before update)", "convert p50", "guest us per tick",
                     "alloc per call p50 (B)", "nearby-entities host p50", "net rtt p50", "linear mem (KiB)",
                     "heap after GC (MiB)", "bytes in / out (session total)"]))
     out.append(row(["---"] * 14))
@@ -72,17 +77,18 @@ for f in sorted(glob.glob(os.path.join(root, "radar-*.json"))):
         t = p["perf"]["timings_us"]
         v = p["perf"]["values"]
         m = "example:radar"
-        he = t.get(f"guest.handle-events/{m}")
+        he = first(t, f"guest.update/{m}", f"guest.handle-events/{m}")
         rd = t.get(f"guest.render/{m}")
         ticks = (t.get("client.tick") or {"n": 0})["n"]
         radar = next((i for i in p["instances"] if i["id"] == m), {})
-        alloc = v.get(f"alloc-bytes.handle-events/{m}")
+        alloc = first(v, f"alloc-bytes.update/{m}", f"alloc-bytes.handle-events/{m}")
+        convert = first(t, f"convert.update/{m}", f"convert.handle-events/{m}")
         out.append(row([
             p["phase"], pct(v.get(f"count.nearby-entities/{m}")), pct(v.get(f"count.draw-commands/{m}")),
             trio(t.get("client.frame")),
             "-" if not he else f"{he['p50']:.1f} / {he['p99']:.1f} / {he['max']:.1f}",
             "-" if not rd else f"{rd['p50']:.1f} / {rd['p99']:.1f} / {rd['max']:.1f}",
-            f"{pct(t.get(f'convert.handle-events/{m}'))} / {pct(t.get(f'convert.render/{m}'))}",
+            pct(convert),
             f"{per_tick_guest_us(p['perf'], m, ticks):.1f}", pct(alloc), pct(t.get(f"host.view.nearby-entities/{m}")),
             pct(t.get("net.rtt")), "-" if radar.get("linear_memory_bytes", -1) < 0 else radar["linear_memory_bytes"] // 1024, p["heap"]["after_gc_mib"],
             f"{radar.get('bytes_in', 0)} / {radar.get('bytes_out', 0)}",
@@ -170,7 +176,7 @@ if radar["java"] and (radar["compiler"] or radar["redline"] or radar["interprete
                 continue
             t = p["perf"]["timings_us"]
             ticks = (t.get("client.tick") or {"n": 0})["n"]
-            alloc = p["perf"]["values"].get(f"alloc-bytes.handle-events/{m}")
+            alloc = first(p["perf"]["values"], f"alloc-bytes.update/{m}", f"alloc-bytes.handle-events/{m}")
             cells[e] = (guest_per_tick(p["perf"], ticks, m), alloc["p50"] if alloc and alloc["n"] else 0,
                         t.get("client.frame"))
         jg, ja, jf = cells["java"]

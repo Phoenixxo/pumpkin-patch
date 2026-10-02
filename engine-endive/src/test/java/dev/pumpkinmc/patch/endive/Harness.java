@@ -147,6 +147,8 @@ final class Harness implements AutoCloseable {
         }
         patch.onFrameReceived(MuxCodec.encode(new MuxFrame.Accept(true, "", routes)));
         patch.onJoin();
+        // The game draws frames continuously, so the GUI size is known before the first tick.
+        frame();
     }
 
     void tick() {

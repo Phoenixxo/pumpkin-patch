@@ -3,7 +3,7 @@ package dev.pumpkinmc.patch.core.model;
 import dev.pumpkinmc.patch.core.model.Model.SessionInfo;
 import dev.pumpkinmc.patch.core.model.Model.WorldRef;
 
-/** An immutable notification delivered to a component in a {@code handle-events} batch. */
+/** An immutable notification delivered to a component in a {@code update} batch. */
 public sealed interface Event {
     record SessionStarted(SessionInfo info) implements Event {}
 

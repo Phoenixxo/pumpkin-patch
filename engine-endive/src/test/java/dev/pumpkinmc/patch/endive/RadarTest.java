@@ -139,20 +139,19 @@ class RadarTest {
             // Performance capture reaches every layer.
             var timings = h.patch.perf().summarize();
             var values = h.patch.perf().summarizeValues();
-            assertTrue(timings.containsKey("guest.render/example:radar"));
+            assertTrue(timings.containsKey("guest.update/example:radar"));
             assertTrue(timings.containsKey("host.view.nearby-entities/example:radar"));
             assertTrue(timings.containsKey("host.hud.measure-text/example:radar"));
-            assertTrue(values.containsKey("alloc-bytes.render/example:radar"));
+            assertTrue(values.containsKey("alloc-bytes.update/example:radar"));
             assertEquals(40.0, values.get("count.nearby-entities/example:radar").max());
             if (!engine.equals("java")) {
                 // Only Wasm has a boundary to convert across and a linear memory to size.
-                assertTrue(timings.containsKey("convert.handle-events/example:radar"));
+                assertTrue(timings.containsKey("convert.update/example:radar"));
                 assertTrue(radar.guest().linearMemoryBytes() > 0);
             }
             assertTrue(radar.bytesIn > 0 && radar.bytesOut > 0);
-            System.out.printf("[%s] radar linear memory %d KiB, render %s, handle-events %s%n", engine,
-                    radar.guest().linearMemoryBytes() / 1024, timings.get("guest.render/example:radar"),
-                    timings.get("guest.handle-events/example:radar"));
+            System.out.printf("[%s] radar linear memory %d KiB, update %s%n", engine,
+                    radar.guest().linearMemoryBytes() / 1024, timings.get("guest.update/example:radar"));
         }
     }
 }

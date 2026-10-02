@@ -97,7 +97,7 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
     public void send(String channel, byte[] payload) throws HostError {
         long t = enter();
         try {
-            if (host.phase != CallPhase.EVENTS && host.phase != CallPhase.SHUTDOWN) {
+            if (host.phase != CallPhase.UPDATE && host.phase != CallPhase.SHUTDOWN) {
                 throw HostError.of(Code.UNAVAILABLE);
             }
             if (!instance.granted(Capability.NET)) {
@@ -195,7 +195,7 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
     public List<Integer> measureText(List<String> texts) throws HostError {
         long t = enter();
         try {
-            if (host.phase != CallPhase.RENDER) {
+            if (host.phase != CallPhase.UPDATE) {
                 throw HostError.of(Code.UNAVAILABLE);
             }
             if (!instance.granted(Capability.HUD)) {

@@ -38,18 +38,11 @@ public abstract class JavaGuest implements GuestInstance {
         }
     }
 
+    /** Mirrors the Rust samples, whose {@code update} runs their event handling, then drawing. */
     @Override
-    public final void handleEvents(List<Event> batch) throws GuestTrap {
+    public final FrameOutput update(List<Event> events, FrameInfo frame) throws GuestTrap {
         try {
-            onEvents(batch);
-        } catch (RuntimeException | StackOverflowError e) {
-            throw trap(e);
-        }
-    }
-
-    @Override
-    public final FrameOutput render(FrameInfo frame) throws GuestTrap {
-        try {
+            onEvents(events);
             return onRender(frame);
         } catch (RuntimeException | StackOverflowError e) {
             throw trap(e);

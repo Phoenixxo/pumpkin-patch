@@ -20,6 +20,15 @@ impl Guest for Trap {
         Ok(InitResult { subscriptions: EventKinds::TICK | EventKinds::INPUT })
     }
 
+    fn update(events: Vec<Event>, frame: FrameInfo) -> FrameOutput {
+        Self::handle_events(events);
+        Self::render(frame)
+    }
+
+    fn shutdown() {}
+}
+
+impl Trap {
     fn handle_events(events: Vec<Event>) {
         for event in events {
             match event {
@@ -42,8 +51,6 @@ impl Guest for Trap {
             shadow: true,
         })])
     }
-
-    fn shutdown() {}
 }
 
 export!(Trap);

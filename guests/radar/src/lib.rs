@@ -116,6 +116,15 @@ impl Guest for Radar {
         Ok(InitResult { subscriptions: EventKinds::TICK | EventKinds::WORLD | EventKinds::INPUT })
     }
 
+    fn update(events: Vec<Event>, frame: FrameInfo) -> FrameOutput {
+        Self::handle_events(events);
+        Self::render(frame)
+    }
+
+    fn shutdown() {}
+}
+
+impl Radar {
     fn handle_events(events: Vec<Event>) {
         STATE.with_borrow_mut(|s| {
             for event in events {
@@ -210,8 +219,6 @@ impl Guest for Radar {
             FrameOutput::Commands(commands)
         })
     }
-
-    fn shutdown() {}
 }
 
 /// Projects a world offset onto the radar so the player's heading points up.

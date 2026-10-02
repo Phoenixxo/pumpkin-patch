@@ -14,6 +14,15 @@ impl Guest for HostCalls {
         Ok(InitResult { subscriptions: EventKinds::TICK })
     }
 
+    fn update(events: Vec<Event>, frame: FrameInfo) -> FrameOutput {
+        Self::handle_events(events);
+        Self::render(frame)
+    }
+
+    fn shutdown() {}
+}
+
+impl HostCalls {
     fn handle_events(events: Vec<Event>) {
         if events.iter().any(|e| matches!(e, Event::Tick(_))) {
             let mut sum = 0u32;
@@ -27,8 +36,6 @@ impl Guest for HostCalls {
     fn render(_: FrameInfo) -> FrameOutput {
         FrameOutput::Unchanged
     }
-
-    fn shutdown() {}
 }
 
 export!(HostCalls);

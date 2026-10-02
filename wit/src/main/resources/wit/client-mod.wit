@@ -46,7 +46,7 @@ interface net {
 
 interface hud {
     use pumpkin:base/types@0.1.0.{host-error};
-    /// Batched text measurement. Allowed in the render phase only.
+    /// Batched text measurement. Allowed during `update` only.
     measure-text: func(texts: list<string>) -> result<list<u32>, host-error>;
 }
 
@@ -84,8 +84,10 @@ interface guest {
     variant frame-output { unchanged, clear, commands(list<draw-command>) }
 
     init: func(info: init-info) -> result<init-result, string>;
-    handle-events: func(events: list<event>);
-    render: func(frame: frame-info) -> frame-output;
+    /// Delivers `events`, then asks for the HUD. The host calls this at most once per tick, and
+    /// only when there are events or the GUI was resized. Between calls it keeps drawing the last
+    /// output, so a component that changes over time subscribes to `tick`.
+    update: func(events: list<event>, frame: frame-info) -> frame-output;
     shutdown: func();
 }
 

@@ -180,18 +180,10 @@ public final class V0_1Binder {
         }
 
         @Override
-        public void handleEvents(List<Event> batch) throws GuestTrap {
+        public Model.FrameOutput update(List<Event> events, Model.FrameInfo frame) throws GuestTrap {
             try {
-                guest.handleEvents(timed(() -> V0_1Convert.events(batch)));
-            } catch (RuntimeException | StackOverflowError e) {
-                throw TrapTranslator.translate(e);
-            }
-        }
-
-        @Override
-        public Model.FrameOutput render(Model.FrameInfo frame) throws GuestTrap {
-            try {
-                var out = guest.render(timed(() -> V0_1Convert.frameInfo(frame)));
+                var out = guest.update(
+                        timed(() -> V0_1Convert.events(events)), timed(() -> V0_1Convert.frameInfo(frame)));
                 return timed(() -> V0_1Convert.frameOutput(out));
             } catch (RuntimeException | StackOverflowError e) {
                 throw TrapTranslator.translate(e);

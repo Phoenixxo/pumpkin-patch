@@ -27,6 +27,15 @@ impl Guest for Bench {
         Ok(InitResult { subscriptions: EventKinds::TICK })
     }
 
+    fn update(events: Vec<Event>, frame: FrameInfo) -> FrameOutput {
+        Self::handle_events(events);
+        Self::render(frame)
+    }
+
+    fn shutdown() {}
+}
+
+impl Bench {
     fn handle_events(events: Vec<Event>) {
         STATE.with_borrow_mut(|s| {
             for event in events {
@@ -56,8 +65,6 @@ impl Guest for Bench {
             ])
         })
     }
-
-    fn shutdown() {}
 }
 
 export!(Bench);
