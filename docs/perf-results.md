@@ -6,6 +6,20 @@ Every number here comes from the real Fabric client against the real Pumpkin ser
 
 Short version: Wasm mods now cost the game thread less than the same mods written in Java. With the radar tracking 256 entities, the game thread spends about 103-107 µs a tick on it, against 196 µs for the Java version. With 8 small HUD mods, it's 33-35 µs against 106 µs. The radar's own code still uses more CPU than Java in total, but that work happens on another core now.
 
+### What the results say
+
+**The game runs smoother with Wasm mods than with the same mods in Java.** The game thread is what decides your frame rate, because if it's busy, the frame waits. A Wasm mod's own work now runs on another core, and the game thread only takes a snapshot and applies the results. Java mods can't safely do that, because they read and change live game objects directly.
+
+**The Wasm code itself still uses more CPU than Java, just a lot less extra than before.** The radar's own work on Redline is 1.3x Java at 256 entities, down from 4.2x on 2026-09-29. Tiny mods still show big ratios, because they barely do anything and the cost is mostly getting in and out. Either way, that time is spent on another core now, so it doesn't hold up frames.
+
+**Worker threads are what made the difference.** The same Redline build with mods on the game thread is worse than Java: 1.4x for the radar and 4.9x for 8 small mods. With workers, it's about half and about a third of Java.
+
+**Drawing the HUD was the biggest hidden cost, for Java and Wasm alike.** The radar took 180-530 µs a frame to draw, every frame. It's 10-19 µs now, and that helps any mod that draws, whatever it's written in.
+
+**Frame times don't tell the engines apart yet.** Frame p95 sits between 7.4 and 9.9 ms in every setup, Java included, and that's just run-to-run noise. At this size no setup moves the frame rate. The game-thread numbers show where the headroom is, though: with a lot of mods or a slower machine, Wasm on workers degrades the least.
+
+**And Wasm gives you isolation Java can't.** A mod that crashes or loops forever gets stopped without taking the game down. That held in every run, on every engine, and a garbage-collection pause can't trip it by mistake anymore.
+
 ### Game-thread time
 
 This is what actually decides whether a mod can hurt your frame rate: the time the game thread spends on mods each tick. Drawing the HUD is counted separately below, because it's the same work whether Java or Wasm produced the commands.
@@ -47,9 +61,14 @@ Drawing the radar used to cost 180-530 µs a frame, for Java and Wasm alike. Rec
 - Mods run on worker threads, against a snapshot of the player and nearby entities taken once a tick on the game thread. The snapshot only collects entities while some mod is reading them, and follows the radius mods actually ask for.
 - The call watchdog no longer counts garbage-collection pauses against a mod. Before that, a GC pause on another thread could stop a perfectly fine mod.
 
+### What's left
+
+- Most of what's still on the game thread is Minecraft's own entity lookup for the snapshot, about 25-55 µs a tick while the radar is on. Java mods pay for it too, but there it's once per mod, and here it's shared.
+- The broadcast phase allocates a lot more on the Wasm side (about 330 KB a call vs. 91 KB for Java). That hasn't been looked into yet.
+- Small mods still pay a lot to get into Wasm and back out. It's harmless on workers, but it's the next thing to cut to get total CPU closer to Java.
+
 ### Caveats
 
-- The broadcast phase allocates a lot more on the Wasm side (about 330 KB a call vs. 91 KB for Java). Nothing's been done about that yet.
 - A mod on a worker runs a bit slower than it would on the game thread, because the worker sits idle between ticks and starts cold. It doesn't matter for frames, but it's why the total-CPU ratios are higher for the small mods.
 - Frame p95 bounces around between 7.4 and 9.9 ms in every column, Java included. That's normal run-to-run noise.
 - The interpreter wasn't rerun. Its last numbers are in the 2026-09-29 tables below.
