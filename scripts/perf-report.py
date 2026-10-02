@@ -37,6 +37,10 @@ def first(d, *keys):
     return next((d[k] for k in keys if d.get(k)), None)
 
 
+def mode(d):
+    return "workers" if d["environment"].get("workers") else "client thread"
+
+
 out = []
 env_printed = False
 
@@ -65,7 +69,7 @@ for f in sorted(glob.glob(os.path.join(root, "radar-*.json"))):
     if not env_printed:
         out.insert(0, "Environment: `" + json.dumps(d["environment"]) + "`\n")
         env_printed = True
-    out.append(f"## example:radar sweep ({d['environment']['engine']})\n")
+    out.append(f"## example:radar sweep ({d['environment']['engine']}, updates on {mode(d)})\n")
     out.append("Compile (cold, per launch): " + ", ".join(
         f"{c['id']} {c['compile_ms']:.0f} ms ({c['bytes'] // 1024} KiB)" for c in d["catalog"]) + "\n")
     out.append(row(["phase", "entities seen", "draw cmds", "frame p50 / p95 / p99", "update p50 / p99 / max",
@@ -123,10 +127,6 @@ def draw_per_frame(perf):
     t = perf["timings_us"]
     frames = (t.get("client.frame") or {"n": 0})["n"]
     return (t.get("drain.hud") or {"sum": 0})["sum"] / frames if frames else 0
-
-
-def mode(d):
-    return "workers" if d["environment"].get("workers") else "client thread"
 
 
 def alloc_per_tick(perf, ticks, mod=None):
