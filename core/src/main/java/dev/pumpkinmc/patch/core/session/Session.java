@@ -248,7 +248,7 @@ public final class Session {
         var view = host.ports.playerView();
         PlayerSnapshot player = view.localPlayer(host.worldEpoch()).orElse(null);
         String dimension = view.dimension().orElse(null);
-        double radius = host.snapshotRadius();
+        double radius = host.nextSnapshotRadius();
         List<EntitySnapshot> entities = player != null && host.entitiesReadWithin(gameTick, ENTITY_READ_WINDOW_TICKS)
                 ? List.copyOf(view.entitiesNear(radius, host.config.maxNearbyEntities()))
                 : null;

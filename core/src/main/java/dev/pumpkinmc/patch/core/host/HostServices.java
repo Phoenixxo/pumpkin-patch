@@ -10,6 +10,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** The host-wide services every instance's bridge and calls share. Owned by the facade. */
 public final class HostServices {
@@ -30,7 +31,10 @@ public final class HostServices {
     private final Queue<Runnable> clientTasks = new ConcurrentLinkedQueue<>();
     /** Text widths measured on the client thread, for workers. Cleared with each session. */
     private final Map<String, Integer> textWidths = new ConcurrentHashMap<>();
+    /** The radius the last snapshot covered. */
     private volatile double snapshotRadius = DEFAULT_SNAPSHOT_RADIUS;
+    /** The widest radius requested since the last snapshot, as double bits, or 0 for none. */
+    private final AtomicLong requestedRadius = new AtomicLong();
     /** The last tick an instance read entities, so snapshots only collect them while they are used. */
     private volatile long entitiesReadTick = Long.MIN_VALUE / 2;
     private volatile int worldEpoch = 1;
@@ -101,15 +105,23 @@ public final class HostServices {
         return textWidths;
     }
 
-    /** How far the next view snapshot reaches: the widest radius any instance asked for. */
-    public double snapshotRadius() {
+    /**
+     * How far the next view snapshot reaches: the widest radius any instance asked for since the last
+     * one, or the last one's radius when none asked. Following what is asked keeps the entity cap
+     * from filling with entities no instance reads. Client thread only.
+     */
+    public double nextSnapshotRadius() {
+        double requested = Double.longBitsToDouble(requestedRadius.getAndSet(0));
+        if (requested > 0) {
+            snapshotRadius = Math.min(requested, 256);
+        }
         return snapshotRadius;
     }
 
     void requestRadius(double radius) {
-        if (radius > snapshotRadius) {
-            snapshotRadius = Math.min(radius, 256);
-        }
+        long bits = Double.doubleToLongBits(radius);
+        requestedRadius.accumulateAndGet(bits,
+                (a, b) -> Double.longBitsToDouble(a) >= Double.longBitsToDouble(b) ? a : b);
     }
 
     void noteEntitiesRead(long gameTick) {

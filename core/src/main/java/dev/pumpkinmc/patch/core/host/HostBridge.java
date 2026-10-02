@@ -219,7 +219,8 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
                 found = host.ports.playerView().entitiesNear(radius, clamped);
             } else {
                 host.noteEntitiesRead(view.gameTick());
-                found = view.entities() != null
+                // A snapshot without entities, or narrower than asked, is answered by the game itself.
+                found = view.entities() != null && radius <= view.radius()
                         ? view.nearby(radius, clamped)
                         : view.nearby(entitiesFromClientThread(radius, clamped), radius, clamped);
             }
