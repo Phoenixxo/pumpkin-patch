@@ -1,6 +1,9 @@
 package dev.pumpkinmc.patch.core.exec;
 
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -12,6 +15,10 @@ import java.util.Map;
  * on the stack. If the budget runs out during a host import, delivery waits until the import returns
  * to the guest. {@link #disarm()} runs after the call has ended and clears the flag, and no interrupt
  * can be issued for that call afterwards because arming, firing, and disarming share one lock.
+ *
+ * <p>Time the JVM spent stopped for garbage collection during a call is not charged to it. A call on
+ * a worker can be stopped by a collection another thread triggered, and the guest did nothing in
+ * that time.
  */
 public final class CallWatchdog implements AutoCloseable {
     private final Object lock = new Object();
@@ -27,10 +34,28 @@ public final class CallWatchdog implements AutoCloseable {
         long firedAt;
         /** When the budget was suspended, or 0 while it runs. */
         long suspendedAt;
+        /** Collection pause time, in milliseconds, already counted against this slot. */
+        long gcPauseMillis;
 
-        Slot(long deadline) {
+        Slot(long deadline, long gcPauseMillis) {
             this.deadline = deadline;
+            this.gcPauseMillis = gcPauseMillis;
         }
+    }
+
+    /** The collectors whose time is stop-the-world pause, not concurrent work. */
+    private static final List<GarbageCollectorMXBean> PAUSING_COLLECTORS =
+            ManagementFactory.getGarbageCollectorMXBeans().stream()
+                    .filter(c -> !c.getName().contains("Concurrent") && !c.getName().contains("Cycles"))
+                    .toList();
+
+    /** Milliseconds the JVM has spent paused for collection so far. */
+    private static long gcPauseMillis() {
+        long total = 0;
+        for (GarbageCollectorMXBean c : PAUSING_COLLECTORS) {
+            total += Math.max(0, c.getCollectionTime());
+        }
+        return total;
     }
 
     public CallWatchdog() {
@@ -42,7 +67,7 @@ public final class CallWatchdog implements AutoCloseable {
     /** Starts the budget for a call on the current thread. */
     public void arm(long budgetNanos) {
         synchronized (lock) {
-            slots.put(Thread.currentThread(), new Slot(System.nanoTime() + budgetNanos));
+            slots.put(Thread.currentThread(), new Slot(System.nanoTime() + budgetNanos, gcPauseMillis()));
             lock.notifyAll();
         }
     }
@@ -125,6 +150,15 @@ public final class CallWatchdog implements AutoCloseable {
                             continue;
                         }
                         long left = slot.deadline - now;
+                        if (left <= 0) {
+                            // Credit any collection pause since the slot was armed, then look again.
+                            long paused = gcPauseMillis();
+                            if (paused > slot.gcPauseMillis) {
+                                slot.deadline += (paused - slot.gcPauseMillis) * 1_000_000L;
+                                slot.gcPauseMillis = paused;
+                                left = slot.deadline - now;
+                            }
+                        }
                         if (left <= 0) {
                             slot.fired = true;
                             slot.firedAt = now;
