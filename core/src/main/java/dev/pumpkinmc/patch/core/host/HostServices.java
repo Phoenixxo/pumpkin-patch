@@ -31,6 +31,8 @@ public final class HostServices {
     /** Text widths measured on the client thread, for workers. Cleared with each session. */
     private final Map<String, Integer> textWidths = new ConcurrentHashMap<>();
     private volatile double snapshotRadius = DEFAULT_SNAPSHOT_RADIUS;
+    /** The last tick an instance read entities, so snapshots only collect them while they are used. */
+    private volatile long entitiesReadTick = Long.MIN_VALUE / 2;
     private volatile int worldEpoch = 1;
 
     /**
@@ -108,6 +110,17 @@ public final class HostServices {
         if (radius > snapshotRadius) {
             snapshotRadius = Math.min(radius, 256);
         }
+    }
+
+    void noteEntitiesRead(long gameTick) {
+        if (gameTick > entitiesReadTick) {
+            entitiesReadTick = gameTick;
+        }
+    }
+
+    /** Whether some instance read entities within the last {@code ticks} ticks before {@code gameTick}. */
+    public boolean entitiesReadWithin(long gameTick, long ticks) {
+        return gameTick - entitiesReadTick <= ticks;
     }
 
     public int worldEpoch() {

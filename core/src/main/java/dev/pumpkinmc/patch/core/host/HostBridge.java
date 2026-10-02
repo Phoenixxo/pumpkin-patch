@@ -214,9 +214,15 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
             int clamped = Math.max(0, Math.min(max, host.config.maxNearbyEntities()));
             host.requestRadius(radius);
             ViewSnapshot view = snapshot();
-            List<EntitySnapshot> found = view != null
-                    ? view.nearby(radius, clamped)
-                    : host.ports.playerView().entitiesNear(radius, clamped);
+            List<EntitySnapshot> found;
+            if (view == null) {
+                found = host.ports.playerView().entitiesNear(radius, clamped);
+            } else {
+                host.noteEntitiesRead(view.gameTick());
+                found = view.entities() != null
+                        ? view.nearby(radius, clamped)
+                        : view.nearby(entitiesFromClientThread(radius, clamped), radius, clamped);
+            }
             host.perf.value("count.nearby-entities/" + instance.id(), found.size());
             return found;
         } finally {
@@ -224,8 +230,31 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
         }
     }
 
-    /** How long a worker waits for the client thread to measure text before giving up. */
-    private static final long MEASURE_WAIT_MILLIS = 1_000;
+    /**
+     * Entities for a worker whose snapshot has none, because no instance had read entities lately.
+     * Fetched on the client thread, where game objects may be read, without charging the wait to the
+     * guest. Later snapshots collect them while they keep being read.
+     */
+    private List<EntitySnapshot> entitiesFromClientThread(double radius, int max) throws HostError {
+        var result = new CompletableFuture<List<EntitySnapshot>>();
+        host.onClientThread(() -> result.complete(List.copyOf(host.ports.playerView().entitiesNear(radius, max))));
+        host.watchdog.suspend();
+        long waited = System.nanoTime();
+        try {
+            return result.get(CLIENT_WAIT_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException | ExecutionException e) {
+            throw HostError.of(Code.UNAVAILABLE);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw HostError.of(Code.UNAVAILABLE);
+        } finally {
+            host.watchdog.resume();
+            host.perf.record("host.view.nearby-entities.client-wait", System.nanoTime() - waited);
+        }
+    }
+
+    /** How long a worker waits for work it handed the client thread before giving up. */
+    private static final long CLIENT_WAIT_MILLIS = 1_000;
 
     /**
      * Text widths for a worker. The game's font code is not thread safe, so widths missing from the
@@ -251,7 +280,7 @@ public final class HostBridge implements HostImports, LogImports, NetImports, Vi
             host.watchdog.suspend();
             long waited = System.nanoTime();
             try {
-                done.get(MEASURE_WAIT_MILLIS, TimeUnit.MILLISECONDS);
+                done.get(CLIENT_WAIT_MILLIS, TimeUnit.MILLISECONDS);
             } catch (TimeoutException | ExecutionException e) {
                 throw HostError.of(Code.UNAVAILABLE);
             } catch (InterruptedException e) {

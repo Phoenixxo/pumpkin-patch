@@ -236,9 +236,12 @@ public final class Session {
         return pending.isEmpty();
     }
 
+    /** How long after an instance last read entities the snapshot keeps collecting them. */
+    private static final long ENTITY_READ_WINDOW_TICKS = 20;
+
     /**
      * What the view imports read on a worker this tick. Taken on the client thread, once, for every
-     * instance updated this tick. Entities are only collected when some instance may read them.
+     * instance updated this tick. Entities are only collected while some instance keeps reading them.
      */
     private ViewSnapshot takeSnapshot() {
         long t = System.nanoTime();
@@ -246,15 +249,11 @@ public final class Session {
         PlayerSnapshot player = view.localPlayer(host.worldEpoch()).orElse(null);
         String dimension = view.dimension().orElse(null);
         double radius = host.snapshotRadius();
-        boolean wanted = false;
-        for (ComponentInstance i : instances) {
-            wanted |= i.state() == State.ACTIVE && i.granted(Capability.VIEW);
-        }
-        List<EntitySnapshot> entities = wanted && player != null
+        List<EntitySnapshot> entities = player != null && host.entitiesReadWithin(gameTick, ENTITY_READ_WINDOW_TICKS)
                 ? List.copyOf(view.entitiesNear(radius, host.config.maxNearbyEntities()))
-                : List.of();
+                : null;
         host.perf.record("host.view.snapshot", System.nanoTime() - t);
-        return new ViewSnapshot(player, dimension, entities, radius);
+        return new ViewSnapshot(player, dimension, entities, radius, gameTick);
     }
 
     private long pendingDeliveryStart;

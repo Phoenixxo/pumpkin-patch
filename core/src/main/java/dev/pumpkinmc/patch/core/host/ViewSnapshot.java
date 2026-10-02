@@ -11,24 +11,32 @@ import java.util.List;
  *
  * @param player the local player, or {@code null} when there is none
  * @param dimension the current dimension, or {@code null} when there is none
- * @param entities entities within {@code radius} of the player, as many as the host allows
+ * @param entities entities within {@code radius} of the player, as many as the host allows, or
+ *     {@code null} when no instance has read entities lately and none were collected
  * @param radius how far {@code entities} reaches
+ * @param gameTick the tick the snapshot was taken on
  */
-public record ViewSnapshot(PlayerSnapshot player, String dimension, List<EntitySnapshot> entities, double radius) {
+public record ViewSnapshot(
+        PlayerSnapshot player, String dimension, List<EntitySnapshot> entities, double radius, long gameTick) {
 
     /**
      * The snapshot's entities within {@code radius} of the player, at most {@code max}. A radius
      * beyond the snapshot's own is answered with what the snapshot holds.
      */
     public List<EntitySnapshot> nearby(double radius, int max) {
-        if (player == null || max <= 0) {
+        return nearby(entities, radius, max);
+    }
+
+    /** {@link #nearby(double, int)} over {@code from}, entities collected for this snapshot's player. */
+    public List<EntitySnapshot> nearby(List<EntitySnapshot> from, double radius, int max) {
+        if (player == null || max <= 0 || from == null) {
             return List.of();
         }
         double x = player.pos().x();
         double y = player.pos().y();
         double z = player.pos().z();
-        List<EntitySnapshot> out = new ArrayList<>(Math.min(max, entities.size()));
-        for (EntitySnapshot e : entities) {
+        List<EntitySnapshot> out = new ArrayList<>(Math.min(max, from.size()));
+        for (EntitySnapshot e : from) {
             if (out.size() == max) {
                 break;
             }
